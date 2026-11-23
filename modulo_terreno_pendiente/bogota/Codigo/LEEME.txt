@@ -1,0 +1,50 @@
+Pendientes de Bogotá sobre el MDT 2020: instrucciones de ejecución
+
+1. Instalar el entorno:  pip install -r requirements.txt
+2. Crear la carpeta datos_entrada y copiar en ella:
+   D2_segmentos_para_pendiente.gpkg, D2_huellas_salidas.json, D2_contrato_intercambio.json
+   (entregados por el frente del grafo) e igac_vertices_control_bogota.csv (está en esta carpeta).
+3. Opcional, para no volver a consultar todo el MDT: crear la carpeta cache y copiar allí
+   checkpoint_final.csv (de la corrida de generar_csv_final) con el nombre
+   bogota_elevaciones_mdt2020_cache.csv. Así solo se consultan los 530 vértices del IGAC y los puntos de la grilla que no estén en la caché.
+4. Ejecutar:  python bogota_pendientes_mdt2020.py
+   Para comprobar reproducibilidad sin red:  python bogota_pendientes_mdt2020.py --solo-cache
+5. Las salidas quedan en datos_salida. Si algo falla, la bitácora (bogota_pendientes_bitacora_v1.log)
+   dice en qué etapa y por qué; no se escribe ninguna salida parcial.
+6. Auxiliares, desde esta carpeta y después del principal:  python auxiliares/<nombre>.py
+   Tareas de cierre (octubre de 2026):
+   - aux_exactitud_ampliada.py: valida el MDT contra los 530 vértices del IGAC con coordenada calculada
+     (requiere igac_vertices_calculadas_bogota.csv en esta carpeta); da sigma_z por etapa y por tipo de terreno.
+     Retoma lo ya consultado si se corta.
+   - aux_puentes_tuneles_osm.py: cruza la Malla Vial con puentes y túneles de OpenStreetMap.
+   - aux_regla_puentes_castigo.py: cuenta las filas extremas sobre puente o túnel que dejan de castigarse con
+     la regla de Medellín (solo se castigan si la neta supera 35 %). Requiere aux_puentes_tuneles_osm.py.
+   - aux_muestra_extremas_35_50.py: muestra de 50 tramos extremos entre 35 y 50 % para revisar a mano;
+     después de anotarla, el mismo script con --resumen da los porcentajes con su intervalo.
+   - aux_referencia_vertical_geoide.py: compara el sesgo del MDT frente a los vértices del IGAC con la
+     ondulación del geoide GEOCOL2004, para establecer si las alturas son ortométricas o elipsoidales.
+     Requiere datos_entrada/GEOCOL2004_20191118.isg.txt (isgeoid.polimi.it, "Retrieve geoid ISG format").
+   Retroalimentación:
+   - aux_resolucion_2020_2025_srtm.py [N por clase]: pendiente de los mismos segmentos con MDT 2020,
+     MDT 2025, SRTM y Copernicus GLO-30; consulta servicios y puede tardar cerca de una hora (continúa si
+     se corta). Copernicus se descarga una vez por tesela en datos_entrada (copernicus_dem_N04_00_W075_00.tif,
+     descargada el 10-11-2026, SHA256 01434300ecd2be4a226fb863b9a88df15e01e42c07ba02bf8aed2125049d1da8).
+   - aux_sigma_por_terreno.py: rama de sensibilidad con un sigma_z por tipo de terreno (plano, inclinado y
+     ladera, del conjunto adoptado), cuenta las pendientes distinguibles de cero con cada sigma. No cambia
+     el archivo oficial. Requiere haber corrido antes aux_exactitud_ampliada.py. 
+     sigma_por_terreno_segmentos.csv SHA256 5eabaf693a2f1ac96440e700fa667d971dc605a4e78109e36ff7b74c1d99af82,
+     sigma_por_terreno_resumen.csv SHA256 8e3d0875ad2cbb4c8a8010207b4c9035321b2bcf310f271ca8c5f7e56fea5eee.
+   - aux_ascenso_linea_recta.py [--paso 50] [--hilos 2] [--lote 100] [--estimar] [--probar]: ascenso
+     acumulado por km en línea recta de origen a destino para los viajes de la muestra del ruteo
+     (datos_entrada/D4_muestra_pares_od.csv), con el piso de ruido del paso usado. Consulta el MDT en lotes
+     de 100 puntos y repite punto por punto todo lote incompleto; continúa desde la caché si se corta.
+     --estimar solo cuenta los puntos; --probar compara un lote con la consulta punto por punto.
+     ascenso_linea_recta_bogota.csv SHA256
+     37c82cf6aa068bfae0df6afc9b2b41c1a0dcf928ccc7981db9fa385f8f98ba35.
+   Los demás auxiliares de la carpeta explican su uso en las primeras líneas de cada archivo.
+
+Primera corrida real: comprobar que la bitácora reporte los umbrales 10,18 y 2,64 m, sigma 0,536 m (496 vértices) y ancho 53,6 m, que pasen las
+17 validaciones, y comparar con el archivo de cierre:
+   python auxiliares/aux_comparar_versiones.py <pendiente_final_sigma0.533_ancho53.6_20261012_154057.csv> datos_salida/bogota_pendientes_segmentos_mdt2020_v1.csv
+Se esperan diferencias de orden 1e-13 como máximo y columnas en el orden del contrato.
+Si el frente del grafo actualiza el contrato o el GeoPackage, debe regenerar D2_huellas_salidas.json.

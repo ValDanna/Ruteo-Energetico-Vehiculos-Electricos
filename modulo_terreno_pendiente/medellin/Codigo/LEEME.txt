@@ -1,0 +1,104 @@
+Pendientes de Medellin sobre el DTM-LiDAR 2021: instrucciones de ejecucion
+
+1. Instalar el entorno (Python 3.11):
+     pip install -r requirements.txt
+   Las versiones son las de la corrida oficial en Windows (pip freeze del 19-10-2026;
+   matplotlib e ipykernel).
+
+2. Copiar en datos_entrada los archivos que entrega el modulo del grafo, sin
+   cambiarles el nombre:
+     D2M_segmentos_para_pendiente.gpkg
+     D2M_contrato_intercambio.json   (reglas para unir el grafo y las pendientes)
+     D2M_huellas_salidas.json
+   y la copia de los vertices del IGAC que viene en esta carpeta:
+     igac_vertices_medellin.csv
+   Si el modulo del grafo cambia el contrato o el gpkg, debe regenerar
+   D2M_huellas_salidas.json; si no, el programa se detiene en el bloque 1.
+
+3. Copiar el DTM-LiDAR Medellin 2021 en datos_entrada\mdt\ con el nombre
+   MDT1_05001_20210501_modelo completo origen Medellin.TIF
+   El .TIF trae en su encabezado el sistema EPSG:6257 (MAGNA-SIRGAS / Medellin
+   urban grid); la ficha del geoportal dice EPSG:9377. Gobierna el del archivo
+   (ver auxiliares\aux_crs_mdt.py).
+   Se descarga del Banco de Imagenes de la Alcaldia de Medellin
+   (https://www.medellin.gov.co/mapgis9/mapa.jsp?aplicacion=49), con cuenta
+   gratuita (https://www.medellin.gov.co/irj/portal/medellin/auto-registro).
+   Ficha del producto:
+   https://www.medellin.gov.co/giscatalogacion/srv/api/records/440571dd-7f89-40aa-bcf9-0b99b311ca1d
+   La descarga trae varios archivos .TIF; el bueno es el de 1,4 GB (los demas eran
+   paginas de error). El .TIF no va en la entrega: pesa 1,4 GB y su licencia de
+   redistribucion no esta confirmada.
+
+4. Correr el programa principal (en la corrida oficial tardo 1 min 17 s):
+     python medellin_pendientes_dtm2021.py
+   Las salidas quedan en datos_salida: el CSV, su .sha256, las huellas, el
+   manifiesto, la bitacora, las validaciones y la sensibilidad.
+
+5. Revisar la bitacora (datos_salida\medellin_pendientes_bitacora_v2.log). Debe decir:
+     - Parametros: sigma_z 0.1 m (ficha), ancho 59.2 m, CRS EPSG:9377 -> EPSG:6257
+     - contrato verificado: 65d2663b8a76fdad8ef273464e1aed0c00a7b1068e3e9739d8237d6d8a879081
+     - gpkg verificado: huella 5baf0bc9b8d2ac59a29b21eafe4d36cd8c2803ce5e966d095fd2ca6db587a590, 39,160 segmentos
+     - SHA-256 del MDT: bfd9709be3d6189c84052e5791fb5c1e8db73cf859eb438ef93934da4c47a7ed, declara 6257: True
+     - es_tunel: 30 filas (28 por nombre, 2 sin nombre que cierran la cadena)
+     - con dato 39,158; fuera de cobertura 2; pendiente_extrema 189
+     - las 20 validaciones del bloque 7 en [OK]
+     - SHA-256 del CSV: 96bfac06f66020792d1cd923d48faca688aceb4bb997ca10ccddc946a2ea490d
+   El programa se detiene si el MDT no es el registrado o si el CSV no da ese SHA.
+   El SHA del CSV es el de Windows con las versiones de requirements.txt; en otro
+   sistema operativo exp y sqrt pueden diferir en el ultimo digito: alli se pone
+   SHA256_SALIDA_ESPERADO = None en la configuracion y se compara con
+   aux_comparar_versiones contra el archivo oficial.
+   Si algo falla, la bitacora dice en que bloque y por que; no se escribe ninguna
+   salida parcial.
+   El CSV principal va en UTF-8 sin BOM (su SHA es el registrado en el modulo del
+   grafo). Los demas CSV van en UTF-8 con BOM para que Excel muestre las tildes.
+
+6. Auxiliares (despues del principal, desde la carpeta codigo):
+     python auxiliares\aux_verificar_contrato.py
+     python auxiliares\aux_tuneles.py
+     python auxiliares\aux_pendientes_extremas.py
+     python auxiliares\aux_vertices_igac.py
+     python auxiliares\aux_alineacion_mdt.py
+     python auxiliares\aux_ancho_correlacion.py
+     python auxiliares\aux_paso_muestreo.py
+     python auxiliares\aux_sigma_por_terreno.py
+     python auxiliares\aux_crs_mdt.py
+     python auxiliares\aux_revision_street_view.py
+     python auxiliares\aux_comparacion_30m.py
+   Escriben en datos_salida\auxiliares. aux_alineacion_mdt, aux_ancho_correlacion
+   y aux_paso_muestreo cortan del MDT el recorte del Olaya Herrera y comprueban
+   que sea el mismo (SHA 2eef0c7b...). aux_vertices_igac, aux_sigma_por_terreno y aux_crs_mdt 	necesitan el MDT completo
+   para la diferencia en cada vertice. aux_comparacion_30m necesita internet y
+   descarga la tesela Copernicus si no esta. Cada auxiliar dice en su encabezado
+   que lee, que escribe y el resultado obtenido.
+
+7. Revision en Street View. La lista de 104 calles esta en
+   respaldo_eda\D3M_revision_street_view_med_sigma010.csv. Se llenan tres
+   columnas, sin cambiar las demas:
+     se_ve_calle_para_carros   si, no o no se ve
+     categoria                 Calle_normal, Calle_abierta, Escalera, No_se_ve
+                               (las de Bogota) o Sendero_o_paso_angosto; debe
+                               cuadrar con la respuesta anterior
+     observacion               lo que se ve, en pocas palabras
+   y se guarda como
+     revision_104_medellin_completada.csv
+   Despues:
+     por franja de pendiente (35 a 50 % y mas de 50 %), la proporcion de calles
+   reales y de pasos peatonales con intervalo de Wilson al 95 %.
+
+8. Cuaderno del EDA: abrir medellin_eda_respaldo_documento.ipynb desde la carpeta
+   codigo en VS Code (extension Jupyter, con el kernel de ipykernel) y ejecutar
+   todas las celdas. Con
+   MODO_VERIFICACION = True compara cada cifra con el documento y al final da el
+   resumen; con False solo muestra los valores. Usa las salidas de los pasos 4 a 7
+   y los archivos de respaldo_eda.
+
+9. Comparar dos versiones del archivo (solo documenta diferencias, no es parte
+   del calculo):
+    Se esperan categorias identicas y diferencias de orden 1e-13 como maximo.
+
+10. Para el modulo del grafo se entregan, de datos_salida:
+     medellin_pendientes_segmentos_dtm2021_v2.csv
+     medellin_pendientes_segmentos_dtm2021_v2.csv.sha256
+     medellin_pendientes_huellas_v2.json
+     medellin_pendientes_manifiesto_v2.json

@@ -1,0 +1,13 @@
+numpy==2.4.6
+pandas==2.3.3
+geopandas==1.1.4
+shapely==2.1.2
+pyproj==3.7.2
+pyogrio==0.13.0
+requests==2.34.2
+xdem==0.2.3
+scikit-gstat==1.0.24
+geoutils==0.2.5
+scipy==1.16.3
+rasterio==1.4.4
+osmnx==2.1.1

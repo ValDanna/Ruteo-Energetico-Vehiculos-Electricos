@@ -12,15 +12,15 @@ los tramos con pendiente_extrema.
 
 Lee:      el archivo de pendientes, el gpkg y la tesela Copernicus (la
           descarga si no esta). Necesita internet para SRTM.
-Escribe:  datos_salida/auxiliares/aux_comparacion_30m_tramos.csv 
-          datos_salida/auxiliares/aux_comparacion_30m_resumen.csv
+Escribe:  aux_comparacion_30m_tramos.csv 
+          aux_comparacion_30m_resumen.csv
 
 Resultado: 262 tramos en Laureles-Estadio (204 de
 30 m o mas) y 243 en Comuna 13 (210). Resultado principal (>= 30 m), RMSE en pp:
 Laureles SRTM 5,17 y Copernicus 4,02; Comuna 13 SRTM 8,39 y Copernicus 7,56
 (sin extremos 7,39 y 7,36). En tramos de 90 m o mas de Comuna 13, Copernicus 3,41
 (correlacion 0,976). Tesela Copernicus SHA abbbcbca... En los sectores no hay
-tuneles; la pendiente neta solo puede cambiar en el ultimo decimal entre
+tuneles, la pendiente neta solo puede cambiar en el ultimo decimal entre
 versiones.
 """
 import time

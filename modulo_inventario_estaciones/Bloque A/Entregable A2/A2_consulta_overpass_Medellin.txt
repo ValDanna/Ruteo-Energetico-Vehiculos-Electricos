@@ -1,0 +1,9 @@
+[out:json][timeout:120][date:"2026-08-30T04:59:59Z"];
+
+(
+    node["amenity"="charging_station"](6.1629,-75.7193,6.3748,-75.4718);
+    way["amenity"="charging_station"](6.1629,-75.7193,6.3748,-75.4718);
+    relation["amenity"="charging_station"](6.1629,-75.7193,6.3748,-75.4718);
+);
+
+out meta center;

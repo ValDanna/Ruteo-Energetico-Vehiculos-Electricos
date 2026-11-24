@@ -1,0 +1,15 @@
+# Python 3.12.14. Versiones con las que se hizo la corrida oficial (celda 18 de D4).
+numpy==2.5.2
+pandas==3.0.5
+geopandas==1.1.4
+shapely==2.1.2
+pyproj==3.7.2
+pyogrio==0.13.0
+scipy==1.18.1
+networkx==3.6.1
+matplotlib==3.11.0
+folium==0.20.0
+# Solo D2 (descarga y lectura de fuentes). [completar versiones con: pip show requests fiona rasterio]
+requests
+fiona
+rasterio

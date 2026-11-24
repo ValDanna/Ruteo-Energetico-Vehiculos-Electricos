@@ -1,0 +1,7 @@
+# Dependencias de terceros para el entorno tesis
+geopandas
+numpy
+pandas
+pyproj
+requests
+shapely

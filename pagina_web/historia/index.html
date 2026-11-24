@@ -1,0 +1,633 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>La cuesta invisible: ruteo energético en Chapinero</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,300;9..144,500;9..144,700&family=Inter+Tight:wght@400;500;600&display=swap" rel="stylesheet">
+<link href="maplibre-gl.css" rel="stylesheet">
+<script src="maplibre-gl.js"></script>
+<script>
+  // Respaldo: si maplibre-gl.js no está en la carpeta, se carga desde internet.
+  if (!window.maplibregl) {
+    document.write('<link href="https://unpkg.com/maplibre-gl@5.24.0/dist/maplibre-gl.css" rel="stylesheet">');
+    document.write('<script src="https://unpkg.com/maplibre-gl@5.24.0/dist/maplibre-gl.js"><\/script>');
+  }
+</script>
+<script src="datos_historia.js"></script><script src="datos_historia.js"></script>
+<style>
+  :root {
+    --noche: #0d1826;
+    --panel: rgba(13, 24, 38, 0.82);
+    --texto: #e9eef3;
+    --tenue: #93a3b5;
+    --brasa: #ff7a45;
+    --cian: #6fe3f0;
+    --borde: rgba(233, 238, 243, 0.12);
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; background: var(--noche); color: var(--texto);
+               font-family: 'Inter Tight', system-ui, sans-serif; }
+  #mapa { position: fixed; inset: 0; }
+  .maplibregl-ctrl-attrib { background: rgba(13,24,38,.6) !important; color: var(--tenue); font-size: 10px; }
+  .maplibregl-ctrl-attrib a { color: var(--tenue); }
+
+  #historia { position: relative; z-index: 2; pointer-events: none; }
+  .paso { min-height: 100vh; display: flex; align-items: center; padding: 0 6vw; }
+  .tarjeta { pointer-events: auto; max-width: 440px; background: var(--panel); backdrop-filter: blur(10px);
+             border: 1px solid var(--borde); border-radius: 18px; padding: 30px 32px;
+             opacity: .25; transform: translateY(18px); transition: opacity .35s ease, transform .35s ease; }
+  .paso.activo .tarjeta { opacity: 1; transform: none; }
+
+  .portada { justify-content: flex-start; }
+  .portada .tarjeta { background: none; border: none; backdrop-filter: none; max-width: 760px; padding: 0; }
+  h1 { font-family: 'Fraunces', Georgia, serif; font-weight: 300; font-size: clamp(2.8rem, 6.4vw, 5.6rem);
+       line-height: .98; letter-spacing: -0.02em; margin: 0 0 26px; }
+  h1 em { font-style: normal; font-weight: 700; }
+  .entrada { font-size: 1.2rem; line-height: 1.55; color: #c9d4de; max-width: 46ch; margin: 0; }
+  .baja { margin-top: 44px; color: var(--tenue); font-size: .9rem; display: flex; gap: 10px; align-items: center; }
+  .baja::before { content: ""; width: 1px; height: 38px; background: linear-gradient(var(--tenue), transparent); }
+
+  h2 { font-family: 'Fraunces', Georgia, serif; font-weight: 500; font-size: 1.9rem; line-height: 1.1;
+       margin: 0 0 14px; letter-spacing: -0.01em; }
+  .tarjeta p { color: #c3cfda; line-height: 1.6; margin: 0 0 14px; font-size: 1.02rem; }
+  .cifra { display: flex; align-items: baseline; gap: 12px; margin: 20px 0 4px; }
+  .cifra b { font-family: 'Fraunces', Georgia, serif; font-weight: 700; font-size: 3.4rem; line-height: 1; }
+  .cifra span { color: var(--tenue); font-size: .95rem; line-height: 1.3; max-width: 22ch; }
+  .brasa { color: var(--brasa); }
+  .cian { color: var(--cian); }
+
+  .rampa { margin-top: 18px; }
+  .rampa .barra { height: 6px; border-radius: 3px;
+    background: linear-gradient(90deg, #2a3a50 0%, #2a3a50 12%, #8a6a3c 28%, #e0832f 52%, #ff4d3d 78%, #ff2f7a 100%); }
+  .rampa .et { display: flex; justify-content: space-between; color: var(--tenue); font-size: .78rem; margin-top: 6px; }
+
+  .leyenda-red { display: flex; gap: 22px; margin-top: 16px; font-size: .9rem; color: var(--tenue); }
+  .leyenda-red i { display: inline-block; vertical-align: middle; margin-right: 8px; }
+  .punto { width: 9px; height: 9px; border-radius: 50%; background: var(--cian); box-shadow: 0 0 8px var(--cian); }
+  .linea { width: 22px; height: 2px; background: #4f8fa3; }
+
+  .indice { position: fixed; right: 26px; top: 50%; transform: translateY(-50%); z-index: 3;
+            display: flex; flex-direction: column; gap: 12px; }
+  .indice button { width: 10px; height: 10px; border-radius: 50%; border: 1px solid var(--tenue);
+                   background: transparent; padding: 0; cursor: pointer; transition: all .3s; }
+  .indice button.activo { background: var(--texto); border-color: var(--texto); transform: scale(1.3); }
+  .indice button:focus-visible { outline: 2px solid var(--cian); outline-offset: 3px; }
+
+  .sello-sint { position: fixed; left: 50%; top: 14px; transform: translateX(-50%); z-index: 4;
+                background: rgba(255,47,122,.16); border: 1px solid rgba(255,47,122,.5); color: #ffc2d7;
+                font-size: .78rem; padding: 5px 12px; border-radius: 20px; display: none; }
+  
+     /* ---------- modo explorador ---------- */
+  .explorar { position: relative; justify-content: flex-start; align-items: stretch; padding: 0; }
+  .explorar .tarjeta { opacity: 1; transform: none; }
+  .mando { position: absolute; top: 24px; left: 24px; width: 330px; max-height: calc(100vh - 48px);
+           overflow: auto; padding: 24px 24px 20px; }
+  .mando h2 { font-size: 1.55rem; margin-bottom: 6px; }
+  .mando .sub { color: var(--tenue); font-size: .92rem; margin: 0 0 18px; line-height: 1.45; }
+  .capa { display: flex; align-items: center; gap: 12px; padding: 11px 0; border-top: 1px solid var(--borde);
+          cursor: pointer; user-select: none; }
+  .capa input { appearance: none; width: 34px; height: 20px; border-radius: 10px; background: #2a3a50;
+                position: relative; cursor: pointer; transition: background .25s; flex: none; margin: 0; }
+  .capa input::after { content: ""; position: absolute; top: 3px; left: 3px; width: 14px; height: 14px;
+                       border-radius: 50%; background: #93a3b5; transition: transform .25s, background .25s; }
+  .capa input:checked { background: #1f6f78; }
+  .capa input:checked::after { transform: translateX(14px); background: #e9eef3; }
+  .capa input:focus-visible { outline: 2px solid var(--cian); outline-offset: 2px; }
+  .capa .nombre { font-size: .96rem; }
+  .capa .muestra { margin-left: auto; }
+  .ficha { margin-top: 16px; padding: 14px 16px; border-radius: 12px; background: rgba(233,238,243,.05);
+           border: 1px solid var(--borde); min-height: 92px; }
+  .ficha .vacia { color: var(--tenue); font-size: .88rem; line-height: 1.45; }
+  .ficha h3 { font-family: 'Fraunces', Georgia, serif; font-weight: 500; font-size: 1.15rem; margin: 0 0 8px; }
+  .ficha .dato { display: flex; justify-content: space-between; font-size: .9rem; padding: 3px 0; color: #c3cfda; }
+  .ficha .dato span:first-child { color: var(--tenue); }
+  .chips { display: flex; flex-wrap: wrap; gap: 5px; margin: 4px 0 2px; }
+  .chip { font-size: .76rem; padding: 3px 8px; border-radius: 20px; background: rgba(111,227,240,.1);
+          border: 1px solid rgba(111,227,240,.3); color: #dffbff; }
+  .ficha .f { font-size: .66rem; color: var(--tenue); margin-left: 5px; opacity: .8; }
+  .ficha .alerta { margin-top: 8px; font-size: .78rem; color: #ffcc4d; }
+  .ficha .clase { font-size: .8rem; color: var(--tenue); margin: -4px 0 8px; }
+  .ficha .grande { font-family: 'Fraunces', Georgia, serif; font-size: 2rem; font-weight: 700; line-height: 1; margin: 2px 0 8px; }
+  .botones { display: flex; gap: 8px; margin-top: 14px; }
+  .botones button { flex: 1; font: inherit; font-size: .88rem; color: var(--texto); background: transparent;
+                    border: 1px solid var(--borde); border-radius: 10px; padding: 9px 0; cursor: pointer; }
+  .botones button:hover { border-color: var(--tenue); }
+  .botones button:focus-visible { outline: 2px solid var(--cian); outline-offset: 2px; }
+  .pista { position: absolute; left: 50%; bottom: 26px; transform: translateX(-50%); color: var(--tenue);
+           font-size: .82rem; background: var(--panel); border: 1px solid var(--borde); border-radius: 20px;
+           padding: 7px 14px; pointer-events: none; white-space: nowrap; }
+  .globo { position: fixed; z-index: 6; pointer-events: none; background: rgba(8,15,25,.92); color: var(--texto);
+           border: 1px solid var(--borde); border-radius: 10px; padding: 8px 11px; font-size: .85rem;
+           display: none; max-width: 240px; line-height: 1.4; }
+  .globo b { font-weight: 600; display: block; }
+  body.explorando .indice { opacity: .35; }
+  @media (max-width: 720px) {
+    .paso { padding: 0 18px; align-items: flex-end; padding-bottom: 8vh; }
+    .tarjeta { padding: 22px; }
+    .indice { right: 10px; }
+  }
+  @media (prefers-reduced-motion: reduce) { .tarjeta { transition: none; } }
+</style>
+</head>
+<body>
+<div id="mapa" role="img" aria-label="Mapa de Chapinero"></div>
+<div class="sello-sint" id="sello-sint">Vista previa con datos sintéticos</div>
+<nav class="indice" id="indice" aria-label="Pasos de la historia"></nav>
+
+<main id="historia">
+  <section class="paso portada" data-paso="pregunta">
+    <div class="tarjeta">
+      <h1>La ruta más corta <em>no siempre</em> es la que menos batería gasta</h1>
+      <p class="entrada">Bogotá es plana hasta que choca con los cerros. Para un carro eléctrico pequeño,
+        esa pared de montaña cambia qué camino conviene tomar. Esta es la historia de cómo lo medimos.</p>
+      <div class="baja">Desliza para empezar</div>
+    </div>
+  </section>
+
+  <section class="paso" data-paso="terreno">
+    <div class="tarjeta">
+      <h2>Cada calle tiene su cuesta</h2>
+      <p>Dividimos Chapinero en tramos de calle y a cada uno le medimos la pendiente con un modelo
+         de terreno hecho con láser desde avión, con precisión de centímetros.</p>
+      <div class="cifra"><b id="n-tramos">0</b><span>tramos de calle medidos en la localidad</span></div>
+      <div class="rampa"><div class="barra"></div>
+        <div class="et"><span>plano</span><span>3 %</span><span>8 %</span><span>15 %</span><span>25 %+</span></div></div>
+    </div>
+  </section>
+
+  <section class="paso" data-paso="cuestas">
+    <div class="tarjeta">
+      <h2>Donde la ciudad se empina</h2>
+      <p>Una calle del 8 % sube 8 metros por cada 100. Para un carro pequeño eso ya multiplica
+         el gasto de batería. Estas son todas las calles que superan ese umbral.</p>
+      <div class="cifra"><b class="brasa" id="n-empinadas">0</b><span>tramos por encima del 8 %</span></div>
+      <p id="txt-max"></p>
+    </div>
+  </section>
+
+  <section class="paso" data-paso="red">
+    <div class="tarjeta">
+      <h2>Para calcular rutas, la ciudad se vuelve una red</h2>
+      <p>Cada esquina es un nodo y cada tramo, una conexión con dirección: una calle de doble sentido
+         son dos conexiones. Sobre esta red corren los algoritmos de ruta.</p>
+      <div class="cifra"><b class="cian" id="n-nodos">0</b><span>esquinas (nodos)</span></div>
+      <div class="cifra"><b class="cian" id="n-aristas">0</b><span>conexiones dirigidas (aristas)</span></div>
+      <div class="leyenda-red"><span><i class="punto"></i>nodo</span><span><i class="linea"></i>arista</span></div>
+    </div>
+  </section>
+  <section class="paso explorar" data-paso="explorar" aria-label="Explorador interactivo">
+    <div class="tarjeta mando">
+      <h2>Explora Chapinero</h2>
+      <p class="sub">Arrastra para moverte, rueda para acercarte y clic derecho para girar. Toca una esquina
+         para ver sus conexiones.</p>
+
+      <label class="capa"><input type="checkbox" id="c-calles" checked>
+        <span class="nombre">Calles por pendiente</span>
+        <span class="muestra" style="width:46px;height:5px;border-radius:3px;background:linear-gradient(90deg,#2a3a50,#e0832f,#ff2f7a)"></span></label>
+      <label class="capa"><input type="checkbox" id="c-red" checked>
+        <span class="nombre">Red: esquinas y conexiones</span>
+        <span class="muestra punto"></span></label>
+      <label class="capa"><input type="checkbox" id="c-est" checked>
+        <span class="nombre">Estaciones de carga</span>
+        <span class="muestra" id="n-est-chap" style="color:var(--tenue);font-size:.85rem"></span></label>
+      <label class="capa"><input type="checkbox" id="c-lim" checked>
+        <span class="nombre">Límite de Chapinero</span>
+        <span class="muestra" style="width:30px;border-top:2px dashed #f4efe6"></span></label>
+
+      <div class="ficha" id="ficha" aria-live="polite">
+        <div class="vacia">Pasa el cursor sobre una calle o una estación, o haz clic en una esquina.</div>
+      </div>
+
+      <div class="botones">
+        <button id="b-bogota">Ver Bogotá</button>
+        <button id="b-chapinero">Centrar Chapinero</button>
+      </div>
+      <div class="botones">
+        <button id="b-inicio">Volver al inicio</button>
+      </div>
+    </div>
+    <div class="pista" id="pista">Modo explorador: el mapa es tuyo</div>
+  </section>
+</main>
+<div class="globo" id="globo"></div>
+<script src="viaje.js"></script>
+
+<script>
+(() => {
+  const D = window.DATOS;
+  if (D.sintetico) document.getElementById('sello-sint').style.display = 'block';
+  const reducir = matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  // ---------- GeoJSON (se arma una sola vez) ----------
+  const tramosGJ = { type: 'FeatureCollection', features: D.tramos.map((t, i) => ({
+    type: 'Feature', id: i,
+    properties: { a: Math.abs(t.s ?? 0), s: t.s, c: t.c, e: t.e, x: t.p[0][0], u: t.u, v: t.v, L: t.L },
+    geometry: { type: 'LineString', coordinates: t.p } })) };
+  const nodosGJ = { type: 'FeatureCollection', features: D.nodos.map((n, i) => ({
+    type: 'Feature', id: i, properties: { i, g: n.g, x: n.p[0] }, geometry: { type: 'Point', coordinates: n.p } })) };
+  const estGJ = { type: 'FeatureCollection', features: D.estaciones.map((e, i) => ({
+    type: 'Feature', properties: { n: e.n, g: e.g, k: i, kw: e.kw ?? 0 }, geometry: { type: 'Point', coordinates: e.p } })) };
+  const limiteGJ = { type: 'Feature', geometry: { type: 'Polygon', coordinates: [D.limite] } };
+
+  const xs = D.nodos.map(n => n.p[0]);
+  const X_MIN = Math.min(...xs), X_MAX = Math.max(...xs);
+
+  // ---------- color por pendiente ----------
+  const colorPendiente = ['interpolate', ['linear'], ['get', 'a'],
+    0, '#2a3a50', 3, '#3b4d66', 5, '#8a6a3c', 8, '#e0832f', 15, '#ff4d3d', 25, '#ff2f7a'];
+
+  // ---------- mapa ----------
+  const mapa = new maplibregl.Map({
+    container: 'mapa',
+    style: {
+      version: 8,
+      glyphs: 'https://cdn.jsdelivr.net/gh/kylebarron/openmaptiles-fonts/fonts/{fontstack}/{range}.pbf',
+      sources: {
+        omt: { type: 'vector', url: 'https://tiles.openfreemap.org/planet',
+          attribution: '© OpenStreetMap · OpenFreeMap' },
+        dem: { type: 'raster-dem', encoding: 'terrarium', tileSize: 256, maxzoom: 13,
+          tiles: ['https://s3.amazonaws.com/elevation-tiles-prod/terrarium/{z}/{x}/{y}.png'],
+          attribution: 'Relieve: AWS Terrain Tiles' },
+        tramos: { type: 'geojson', data: tramosGJ, maxzoom: 18, tolerance: 0.3, buffer: 32 },
+        nodos: { type: 'geojson', data: nodosGJ, maxzoom: 18, buffer: 16 },
+        limite: { type: 'geojson', data: limiteGJ, maxzoom: 14 }
+      },
+      layers: [
+        { id: 'fondo', type: 'background', paint: { 'background-color': '#0d1826' } },
+        { id: 'verde', type: 'fill', source: 'omt', 'source-layer': 'landcover',
+          filter: ['in', ['get', 'class'], ['literal', ['wood', 'grass', 'forest']]],
+          paint: { 'fill-color': '#0f2230', 'fill-opacity': 0.7 } },
+        { id: 'parques', type: 'fill', source: 'omt', 'source-layer': 'park',
+          paint: { 'fill-color': '#0f2230', 'fill-opacity': 0.6 } },
+        { id: 'agua', type: 'fill', source: 'omt', 'source-layer': 'water', paint: { 'fill-color': '#08131f' } },
+        { id: 'sombra', type: 'hillshade', source: 'dem',
+          paint: { 'hillshade-shadow-color': '#04070d', 'hillshade-highlight-color': 'rgba(170,195,230,0.55)',
+                   'hillshade-accent-color': '#0a1422', 'hillshade-exaggeration': 0.55,
+                   'hillshade-illumination-direction': 300 } },
+        { id: 'edificios', type: 'fill', source: 'omt', 'source-layer': 'building', minzoom: 14,
+          paint: { 'fill-color': '#1a2837', 'fill-opacity': ['interpolate', ['linear'], ['zoom'], 14, 0, 15.5, 0.8] } },
+        { id: 'vias-menores', type: 'line', source: 'omt', 'source-layer': 'transportation', minzoom: 12,
+          filter: ['in', ['get', 'class'], ['literal', ['minor', 'service', 'track']]],
+          layout: { 'line-cap': 'round', 'line-join': 'round' },
+          paint: { 'line-color': '#1c2b3b', 'line-width': ['interpolate', ['exponential', 1.6], ['zoom'], 12, 0.3, 15, 1.5, 18, 8] } },
+        { id: 'vias-mayores', type: 'line', source: 'omt', 'source-layer': 'transportation',
+          filter: ['in', ['get', 'class'], ['literal', ['motorway', 'trunk', 'primary', 'secondary', 'tertiary']]],
+          layout: { 'line-cap': 'round', 'line-join': 'round' },
+          paint: { 'line-color': '#24364a', 'line-width': ['interpolate', ['exponential', 1.6], ['zoom'], 10, 0.6, 14, 2.5, 18, 16] } },
+        { id: 'nombres-calles', type: 'symbol', source: 'omt', 'source-layer': 'transportation_name', minzoom: 15.5,
+          layout: { 'symbol-placement': 'line', 'text-field': ['coalesce', ['get', 'name:es'], ['get', 'name']],
+                    'text-font': ['Noto Sans Regular'], 'text-size': 11 },
+          paint: { 'text-color': '#6f8196', 'text-halo-color': '#0d1826', 'text-halo-width': 1.4 } },
+        { id: 'barrios', type: 'symbol', source: 'omt', 'source-layer': 'place', minzoom: 12,
+          filter: ['in', ['get', 'class'], ['literal', ['suburb', 'neighbourhood', 'quarter']]],
+          layout: { 'text-field': ['coalesce', ['get', 'name:es'], ['get', 'name']], 'text-font': ['Noto Sans Regular'],
+                    'text-size': ['interpolate', ['linear'], ['zoom'], 12, 10, 16, 13], 'text-letter-spacing': 0.04 },
+          paint: { 'text-color': '#7f90a3', 'text-halo-color': '#0d1826', 'text-halo-width': 1.5 } }
+      ]
+    },
+    center: [-74.09, 4.64], zoom: 11.2, pitch: 0, bearing: 0,
+    interactive: false, attributionControl: { compact: true }, fadeDuration: 120, maxZoom: 18
+  });
+
+  // Cámaras calculadas desde los datos: centro = mediana de las esquinas (zona urbana),
+  // no el centro del polígono, que cae en los cerros vacíos.
+  const med = a => { const s = [...a].sort((p, q) => p - q); return s[Math.floor(s.length / 2)]; };
+  const CX = med(D.nodos.map(n => n.p[0])), CY = med(D.nodos.map(n => n.p[1]));
+  const PASOS = {
+    pregunta: { camara: { center: [CX - 0.03, CY], zoom: 11.4, pitch: 0, bearing: 0 } },
+    terreno:  { camara: { center: [CX + 0.004, CY], zoom: 13.55, pitch: 45, bearing: -15 } },
+    cuestas:  { camara: { center: [CX + 0.008, CY + 0.003], zoom: 14.2, pitch: 55, bearing: -28 } },
+    red:      { camara: { center: [CX - 0.002, CY - 0.002], zoom: 15.2, pitch: 30, bearing: -8 } },
+    explorar: { camara: { center: [CX + 0.009, CY], zoom: 13.7, pitch: 38, bearing: -12 } },
+  };
+
+  const BOGOTA = { center: [-74.095, 4.65], zoom: 11.2, pitch: 0, bearing: 0 };
+  let listo = false, pasoActual = null, anim = null;
+
+  mapa.on('load', () => {
+    
+    mapa.addLayer({ id: 'limite-halo', type: 'line', source: 'limite',
+      paint: { 'line-color': '#e9eef3', 'line-width': 7, 'line-opacity': 0, 'line-blur': 6 } });
+    mapa.addLayer({ id: 'limite', type: 'line', source: 'limite',
+      paint: { 'line-color': '#f4efe6', 'line-width': 1.6, 'line-opacity': 0, 'line-dasharray': [3, 2] } });
+
+    // brillo de las calles empinadas y confiables (debajo) + calle nítida (encima)
+    mapa.addLayer({ id: 'calles-brillo', type: 'line', source: 'tramos',
+      filter: ['all', ['>=', ['get', 'a'], 8], ['==', ['get', 'c'], true]],
+      layout: { 'line-cap': 'round', 'line-join': 'round' },
+      paint: { 'line-color': colorPendiente, 'line-blur': 5,
+               'line-width': ['interpolate', ['linear'], ['zoom'], 12, 3, 16, 12, 18, 24], 'line-opacity': 0 } });
+    mapa.addLayer({ id: 'calles', type: 'line', source: 'tramos', filter: ['==', ['get', 'c'], true],
+      layout: { 'line-cap': 'round', 'line-join': 'round' },
+      paint: { 'line-color': colorPendiente,
+               'line-width': ['interpolate', ['linear'], ['zoom'], 12, 0.6, 14, 1.6, 16, 3.2], 'line-opacity': 0 } });
+
+    mapa.addLayer({ id: 'aristas', type: 'line', source: 'tramos',
+      paint: { 'line-color': '#4f8fa3', 'line-width': ['interpolate', ['linear'], ['zoom'], 13, .4, 16, 1.2, 18, 2.6],
+               'line-opacity': 0 } });
+    mapa.addLayer({ id: 'nodos-brillo', type: 'circle', source: 'nodos',
+      paint: { 'circle-color': '#6fe3f0', 'circle-blur': 1,
+               'circle-radius': ['interpolate', ['linear'], ['zoom'], 13, 2, 16, 9, 18, 20], 'circle-opacity': 0 } });
+    mapa.addLayer({ id: 'nodos', type: 'circle', source: 'nodos',
+      paint: { 'circle-color': '#dffbff',
+               'circle-radius': ['interpolate', ['linear'], ['zoom'], 13, .8, 16, ['+', 1.6, ['*', .35, ['get', 'g']]],
+                                18, ['+', 3.5, ['*', .8, ['get', 'g']]]],
+               'circle-opacity': 0 } });
+
+    // conexiones de la esquina seleccionada
+    mapa.addLayer({ id: 'seleccion-aristas', type: 'line', source: 'tramos', filter: ['==', ['get', 'u'], -1],
+      layout: { 'line-cap': 'round' },
+      paint: { 'line-color': '#ffe08a', 'line-width': ['interpolate', ['linear'], ['zoom'], 13, 2, 17, 6] } });
+    mapa.addLayer({ id: 'seleccion-nodo', type: 'circle', source: 'nodos', filter: ['==', ['get', 'i'], -1],
+      paint: { 'circle-color': '#ffe08a', 'circle-radius': 7, 'circle-stroke-color': '#0d1826', 'circle-stroke-width': 2 } });
+
+    // estaciones: ícono dibujado en canvas (anillo por fuente + rayo)
+    const ANILLO = { ambas: '#3ddc97', desacuerdo: '#ffcc4d', una: '#93a3b5' };
+    Object.entries(ANILLO).forEach(([g, color]) => {
+      const S = 96, cv = document.createElement('canvas'); cv.width = cv.height = S;
+      const cx = cv.getContext('2d');
+      cx.beginPath(); cx.arc(48, 48, 40, 0, Math.PI * 2); cx.fillStyle = '#0d1826'; cx.fill();
+      cx.lineWidth = 8; cx.strokeStyle = color; cx.stroke();
+      cx.beginPath(); cx.moveTo(54, 20); cx.lineTo(30, 54); cx.lineTo(46, 54); cx.lineTo(40, 78);
+      cx.lineTo(66, 42); cx.lineTo(50, 42); cx.closePath(); cx.fillStyle = '#ffe08a'; cx.fill();
+      mapa.addImage('est-' + g, cx.getImageData(0, 0, S, S), { pixelRatio: 2 });
+    });
+    mapa.addSource('estaciones', { type: 'geojson', data: estGJ });
+    // línea punteada de cada estación a su esquina más cercana
+    mapa.addSource('conectores', { type: 'geojson', data: { type: 'FeatureCollection', features: D.estaciones
+      .filter(e => e.nodo !== undefined)
+      .map(e => ({ type: 'Feature', properties: { dm: e.dm },
+                   geometry: { type: 'LineString', coordinates: [e.p, D.nodos[e.nodo].p] } })) } });
+    mapa.addLayer({ id: 'conectores', type: 'line', source: 'conectores',
+      paint: { 'line-color': '#ffe08a', 'line-width': 1.4, 'line-dasharray': [1.5, 1.5], 'line-opacity': 0 } });
+    mapa.addLayer({ id: 'estaciones-halo', type: 'circle', source: 'estaciones',
+      paint: { 'circle-color': '#ffe08a', 'circle-blur': 1, 'circle-radius': 26, 'circle-opacity': 0 } });
+    mapa.addLayer({ id: 'estaciones', type: 'symbol', source: 'estaciones',
+      layout: { 'icon-image': ['concat', 'est-', ['get', 'g']],
+                'icon-size': ['interpolate', ['linear'], ['zoom'],
+                              11, ['*', .55, ['case', ['>=', ['get', 'kw'], 50], 1.35, ['>=', ['get', 'kw'], 22], 1.15, 1]],
+                              15, ['*', 1, ['case', ['>=', ['get', 'kw'], 50], 1.35, ['>=', ['get', 'kw'], 22], 1.15, 1]]],
+                'icon-allow-overlap': true, 'icon-ignore-placement': true },
+      paint: { 'icon-opacity': 0 } });
+    mapa.addLayer({ id: 'estaciones-kw', type: 'symbol', source: 'estaciones', minzoom: 14, filter: ['>', ['get', 'kw'], 0],
+      layout: { 'text-field': ['concat', ['number-format', ['get', 'kw'], { 'max-fraction-digits': 0 }], ' kW'],
+                'text-font': ['Noto Sans Regular'], 'text-size': 11, 'text-offset': [0, 2.1],
+                'text-allow-overlap': true, 'text-ignore-placement': true },
+      paint: { 'text-color': '#ffe08a', 'text-halo-color': '#0d1826', 'text-halo-width': 1.6, 'text-opacity': 0 } });
+
+    listo = true;
+    irA(pasoActual || 'pregunta', true);
+    window.APP = { mapa, D, aplicarCapas };                    // para viaje.js
+    window.dispatchEvent(new Event('app-listo'));     // cuando la portada ya se ve, precarga lo demás
+  });
+  // ---------- precarga de mosaicos ----------
+  // Mientras se lee la portada, se descargan en segundo plano los mosaicos que usarán los
+  // pasos siguientes. Así, al bajar, el mapa ya está en la caché del navegador y aparece nítido.
+  function precargar() {
+    const plantillas = Object.values(mapa.getStyle().sources)
+      .filter(s => s.tiles).map(s => ({ url: s.tiles[0], max: s.maxzoom ?? 22 }));
+    const pedidos = new Set();
+    Object.values(PASOS).forEach(({ camara }) => {
+      const z = Math.ceil(camara.zoom);
+      const n = 2 ** z, x0 = (camara.center[0] + 180) / 360 * n;
+      const lat = camara.center[1] * Math.PI / 180;
+      const y0 = (1 - Math.log(Math.tan(lat) + 1 / Math.cos(lat)) / Math.PI) / 2 * n;
+      const rx = Math.ceil(innerWidth / 512) + 1, ry = Math.ceil(innerHeight / 512) + (camara.pitch > 20 ? 3 : 1);
+      plantillas.forEach(({ url, max }) => {
+        const zz = Math.min(z, max), f = 2 ** (z - zz);
+        for (let dx = -rx; dx <= rx; dx++) for (let dy = -ry; dy <= Math.ceil(ry / 2); dy++) {
+          const x = Math.floor((x0 + dx) / f), y = Math.floor((y0 + dy) / f);
+          pedidos.add(url.replace('{z}', zz).replace('{x}', x).replace('{y}', y));
+        }
+      });
+    });
+    let i = 0; const lista = [...pedidos];
+    const siguiente = () => { if (i < lista.length) fetch(lista[i++], { mode: 'cors' }).catch(() => {}).finally(siguiente); };
+    for (let k = 0; k < 6; k++) siguiente();          // 6 descargas en paralelo, sin saturar
+  }
+  // ---------- utilidades ----------
+  const op = (capa, prop, valor, ms = 900) => {
+    mapa.setPaintProperty(capa, prop + '-transition', { duration: reducir ? 0 : ms, delay: 0 });
+    mapa.setPaintProperty(capa, prop, valor);
+  };
+  function contar(el, hasta, ms = 900) {
+    const nodo = document.getElementById(el); if (!nodo) return;
+    if (reducir) { nodo.textContent = hasta.toLocaleString('es-CO'); return; }
+    const t0 = performance.now();
+    const f = t => { const k = Math.min(1, (t - t0) / ms), e = 1 - Math.pow(1 - k, 3);
+      nodo.textContent = Math.round(hasta * e).toLocaleString('es-CO'); if (k < 1) requestAnimationFrame(f); };
+    requestAnimationFrame(f);
+  }
+  // barrido de occidente (plano) a oriente (cerros): la ciudad se "enciende" hacia la montaña
+  function barrer(capa, prop, destino, ms = 1500) {
+    cancelAnimationFrame(anim);
+    mapa.setPaintProperty(capa, prop + '-transition', { duration: 0 });
+    if (reducir) { mapa.setPaintProperty(capa, prop, destino); return; }
+    const t0 = performance.now(), ancho = (X_MAX - X_MIN) * 0.12;
+    const f = t => {
+      const k = Math.min(1, (t - t0) / ms), frente = X_MIN - ancho + k * (X_MAX - X_MIN + 2 * ancho);
+      mapa.setPaintProperty(capa, prop,
+        ['interpolate', ['linear'], ['get', 'x'], frente - ancho, destino, frente, 0]);
+      if (k < 1) anim = requestAnimationFrame(f); else mapa.setPaintProperty(capa, prop, destino);
+    };
+    anim = requestAnimationFrame(f);
+  }
+
+  // ---------- pasos ----------
+  const conteo = {
+    tramos: D.tramos.filter(t => t.e).length,
+    empinadas: D.tramos.filter(t => t.e && t.c && Math.abs(t.s) > 8).length,
+    fuertes: D.tramos.filter(t => t.e && t.c && Math.abs(t.s) > 15).length,
+    nodos: D.nodos.length, aristas: D.tramos.length,
+  };
+  document.getElementById('txt-max').textContent =
+    `De ellos, ${conteo.fuertes.toLocaleString('es-CO')} superan el 15 %: cuestas que se sienten incluso a pie.`;
+
+  function irA(id, inmediato = false) {
+    pasoActual = id;
+    document.querySelectorAll('.paso').forEach(p => p.classList.toggle('activo', p.dataset.paso === id));
+    document.querySelectorAll('.indice button').forEach(b => b.classList.toggle('activo', b.dataset.paso === id));
+    if (!listo) return;
+    cancelAnimationFrame(anim);
+    mapa.flyTo({ ...PASOS[id].camara, duration: inmediato || reducir ? 0 : 2000, essential: true,
+                 curve: 1.3, easing: t => t < .5 ? 4*t*t*t : 1 - Math.pow(-2*t + 2, 3) / 2 });
+
+    modoExplorador(id === 'explorar');
+    if (id !== 'explorar') { op('estaciones', 'icon-opacity', 0, 500); op('estaciones-halo', 'circle-opacity', 0, 500); op('estaciones-kw', 'text-opacity', 0, 500);
+                             op('conectores', 'line-opacity', 0, 500); }
+
+    const sombra = id === 'pregunta' ? 0.5 : 0.85;
+    op('sombra', 'hillshade-exaggeration', sombra, 900);
+
+    if (id === 'pregunta') {
+      ['calles', 'calles-brillo', 'aristas', 'nodos', 'nodos-brillo', 'limite', 'limite-halo']
+        .forEach(c => op(c, c.startsWith('nodos') ? 'circle-opacity' : 'line-opacity', 0, 700));
+    }
+    if (id === 'terreno') {
+      op('limite', 'line-opacity', 0.9); op('limite-halo', 'line-opacity', 0.18);
+      op('aristas', 'line-opacity', 0, 600); op('nodos', 'circle-opacity', 0, 600); op('nodos-brillo', 'circle-opacity', 0, 600);
+      op('calles-brillo', 'line-opacity', 0.35, 1200);
+      setTimeout(() => barrer('calles', 'line-opacity', 1), inmediato ? 0 : 250);
+      contar('n-tramos', conteo.tramos);
+    }
+    if (id === 'cuestas') {
+      op('limite', 'line-opacity', 0.9); op('limite-halo', 'line-opacity', 0.18);
+      op('aristas', 'line-opacity', 0, 600); op('nodos', 'circle-opacity', 0, 600); op('nodos-brillo', 'circle-opacity', 0, 600);
+      op('calles', 'line-opacity', ['case', ['>=', ['get', 'a'], 8], 1, 0.12], 1100);
+      op('calles-brillo', 'line-opacity', 0.75, 1400);
+      contar('n-empinadas', conteo.empinadas);
+    }
+    if (id === 'red') {
+      op('limite', 'line-opacity', 0.5); op('limite-halo', 'line-opacity', 0);
+      op('calles', 'line-opacity', 0.0, 1000); op('calles-brillo', 'line-opacity', 0, 900);
+      op('aristas', 'line-opacity', 0.55, 1200);
+      setTimeout(() => { barrer('nodos', 'circle-opacity', 1, 1300); op('nodos-brillo', 'circle-opacity', 0.35, 1300); },
+                 inmediato ? 0 : 250);
+      contar('n-nodos', conteo.nodos); contar('n-aristas', conteo.aristas);
+    }
+    if (id === 'explorar') aplicarCapas(true);
+    
+  }
+    // ---------- explorador ----------
+  const $ = id => document.getElementById(id);
+  $('n-est-chap').textContent = D.estaciones.length;
+  const MANEJADORES = ['dragPan', 'dragRotate', 'scrollZoom', 'doubleClickZoom', 'touchZoomRotate', 'keyboard', 'touchPitch'];
+  function modoExplorador(on) {
+    document.body.classList.toggle('explorando', on);
+    MANEJADORES.forEach(h => on ? mapa[h].enable() : mapa[h].disable());
+    mapa.getCanvas().style.cursor = on ? 'grab' : '';
+    if (!on) { limpiarSeleccion(); $('globo').style.display = 'none'; }
+  }
+
+  function aplicarCapas(entrada = false) {
+    const ms = entrada ? 1100 : 400;
+    const calles = $('c-calles').checked, red = $('c-red').checked, est = $('c-est').checked, lim = $('c-lim').checked;
+    op('calles', 'line-opacity', calles ? (red ? 0.9 : 1) : 0, ms);
+    op('calles-brillo', 'line-opacity', calles ? 0.35 : 0, ms);
+    op('aristas', 'line-opacity', red ? (calles ? 0.28 : 0.6) : 0, ms);
+    op('nodos', 'circle-opacity', red ? 0.95 : 0, ms);
+    op('nodos-brillo', 'circle-opacity', red ? 0.28 : 0, ms);
+    op('estaciones', 'icon-opacity', est ? 1 : 0, ms);
+    op('estaciones-halo', 'circle-opacity', est ? 0.22 : 0, ms);
+    op('estaciones-kw', 'text-opacity', est ? 1 : 0, ms);
+    op('conectores', 'line-opacity', est ? 0.75 : 0, ms);
+    op('limite', 'line-opacity', lim ? 0.95 : 0, ms);
+    op('limite-halo', 'line-opacity', lim ? 0.2 : 0, ms);
+    mapa.setLayoutProperty('nodos', 'visibility', red ? 'visible' : 'none');
+    mapa.setLayoutProperty('estaciones', 'visibility', est ? 'visible' : 'none');
+  }
+  ['c-calles', 'c-red', 'c-est', 'c-lim'].forEach(id => $(id).addEventListener('change', () => aplicarCapas()));
+
+  const fmtP = s => s === null || s === undefined ? 'sin dato' : `${s > 0 ? '+' : ''}${Number(s).toFixed(1)} %`;
+  const NOMBRE_GRUPO = { ambas: 'Confirmada por las dos fuentes', desacuerdo: 'Las fuentes no coinciden en la posición',
+                         una: 'Aparece en una sola fuente' };
+
+  function limpiarSeleccion() {
+    if (!listo) return;
+    mapa.setFilter('seleccion-aristas', ['==', ['get', 'u'], -1]);
+    mapa.setFilter('seleccion-nodo', ['==', ['get', 'i'], -1]);
+  }
+  function ficha(html) { $('ficha').innerHTML = html; }
+
+  const ACCESO = { PUBLICO: 'Público', PUBLICO_MEMBRESIA: 'Público con app o membresía', CLIENTES: 'Solo clientes', PRIVADO: 'Privado' };
+  const COBRO = { GRATIS: 'Gratis', COBRA: 'Con cobro' };
+  function fichaEstacion(e) {
+    const f = x => x ? `<span class="f">${x}</span>` : '';
+    const sd = '<span style="color:var(--tenue)">sin dato</span>';
+    const clase = e.kw == null ? '' : e.kw < 7 ? 'Carga lenta' : e.kw <= 22 ? 'Carga semirrápida' : 'Carga rápida';
+    const dias = e.verif ? Math.round((Date.now() - new Date(e.verif)) / 864e5) : null;
+    return `<h3>${e.n}</h3>
+      <div class="grande" style="color:#ffe08a">${e.kw != null ? Math.round(e.kw) + ' kW' : '— kW'}</div>
+      <div class="clase">${clase}${e.dc ? ' · corriente continua (DC)' : ''}${f(e.kw_f)}</div>
+      <div class="chips">${e.con.length ? e.con.map(c => `<span class="chip">${c.t}${c.n > 1 ? ' ×' + c.n : ''}</span>`).join('') : sd}${f(e.con_f)}</div>
+      <div class="dato"><span>Acceso</span><span>${e.acc ? ACCESO[e.acc] || e.acc : sd}${f(e.acc_f)}</span></div>
+      <div class="dato"><span>Cobro</span><span>${e.cob ? COBRO[e.cob] || e.cob : sd}${e.tarifa ? ' (' + e.tarifa + ')' : ''}${f(e.cob_f)}</span></div>
+      <div class="dato"><span>Puntos de carga</span><span>${e.cap ?? sd}${f(e.cap_f)}</span></div>
+      <div class="dato"><span>Operador</span><span>${e.op ?? sd}${f(e.op_f)}</span></div>
+      ${e.dm !== undefined ? `<div class="dato"><span>Distancia a la vía</span><span>${Math.round(e.dm)} m</span></div>` : ''}
+      ${e.estado ? `<div class="dato"><span>Estado (OCM)</span><span>${e.estado === 'Operational' ? 'Operativa' : e.estado}</span></div>` : ''}
+      ${e.verif ? `<div class="dato"><span>Última verificación</span><span>${e.verif}</span></div>` : ''}
+      ${e.horario ? `<div class="dato"><span>Horario (OSM)</span><span style="text-align:right;max-width:60%">${e.horario}</span></div>` : ''}
+      ${dias !== null && dias > 730 ? `<div class="alerta">⚠ Lleva ${Math.floor(dias / 365)} años sin verificarse</div>` : ''}`;
+  }
+
+  mapa.on('mousemove', e => {
+    if (pasoActual !== 'explorar') return;
+    if (window.VIAJE && window.VIAJE.activo) { $('globo').style.display = 'none'; mapa.getCanvas().style.cursor = 'crosshair'; return; }
+    const capas = ['estaciones', 'nodos', 'calles'].filter(c => mapa.getLayoutProperty(c, 'visibility') !== 'none' &&
+                                                               mapa.getPaintProperty(c, c === 'estaciones' ? 'icon-opacity' : c === 'nodos' ? 'circle-opacity' : 'line-opacity') !== 0);
+    const f = mapa.queryRenderedFeatures([[e.point.x - 5, e.point.y - 5], [e.point.x + 5, e.point.y + 5]], { layers: capas })[0];
+    const globo = $('globo');
+    mapa.getCanvas().style.cursor = f ? 'pointer' : 'grab';
+    if (!f) { globo.style.display = 'none'; return; }
+    const p = f.properties;
+    let html = '';
+    if (f.layer.id === 'estaciones') html = `<b>${p.n}</b>${p.kw > 0 ? Math.round(p.kw) + ' kW' : ''}`;
+    else if (f.layer.id === 'nodos') html = `<b>Esquina</b>${p.g} esquinas vecinas`;
+    else html = `<b>Pendiente ${fmtP(p.s)}</b>${Math.round(p.L)} m de largo`;
+    globo.innerHTML = html; globo.style.display = 'block';
+    globo.style.left = (e.originalEvent.clientX + 14) + 'px';
+    globo.style.top = (e.originalEvent.clientY + 14) + 'px';
+  });
+  mapa.on('mouseout', () => { $('globo').style.display = 'none'; });
+
+  mapa.on('click', e => {
+    if (pasoActual !== 'explorar') return;
+    if (window.VIAJE && window.VIAJE.activo) { window.VIAJE.clic(e); return; }   // modo "Planear viaje"
+    const zona = [[e.point.x - 7, e.point.y - 7], [e.point.x + 7, e.point.y + 7]];
+    const visibles = c => mapa.getLayoutProperty(c, 'visibility') !== 'none';
+    const est = visibles('estaciones') && mapa.queryRenderedFeatures(zona, { layers: ['estaciones'] })[0];
+    if (est) {
+      limpiarSeleccion();
+      mapa.easeTo({ center: est.geometry.coordinates, zoom: Math.max(mapa.getZoom(), 16), duration: 1200 });
+      ficha(fichaEstacion(D.estaciones[est.properties.k]));
+      return;
+    }
+    const nodo = visibles('nodos') && mapa.queryRenderedFeatures(zona, { layers: ['nodos'] })[0];
+    if (nodo) {
+      const i = nodo.properties.i;
+      const salen = D.tramos.filter(t => t.u === i), llegan = D.tramos.filter(t => t.v === i);
+      const pend = salen.filter(t => t.c).map(t => t.s);
+      mapa.setFilter('seleccion-aristas', ['any', ['==', ['get', 'u'], i], ['==', ['get', 'v'], i]]);
+      mapa.setFilter('seleccion-nodo', ['==', ['get', 'i'], i]);
+      ficha(`<h3>Esquina ${i.toLocaleString('es-CO')}</h3>
+        <div class="grande cian">${salen.length + llegan.length}</div>
+        <div class="dato"><span>Conexiones que salen</span><span>${salen.length}</span></div>
+        <div class="dato"><span>Conexiones que llegan</span><span>${llegan.length}</span></div>
+        <div class="dato"><span>Salida más empinada</span><span>${pend.length ? fmtP(pend.reduce((a, b) => Math.abs(b) > Math.abs(a) ? b : a)) : 'sin dato'}</span></div>`);
+      return;
+    }
+    const calle = mapa.queryRenderedFeatures(zona, { layers: ['calles'] })[0];
+    if (calle) {
+      limpiarSeleccion();
+      const p = calle.properties, sube = p.s > 0 ? 'Sube' : p.s < 0 ? 'Baja' : 'Plana';
+      ficha(`<h3>Tramo de calle</h3><div class="grande" style="color:${p.a >= 8 ? 'var(--brasa)' : 'var(--texto)'}">${fmtP(p.s)}</div>
+        <div class="dato"><span>Sentido</span><span>${sube} en la dirección de circulación</span></div>
+        <div class="dato"><span>Longitud</span><span>${Math.round(p.L)} m</span></div>
+        <div class="dato"><span>Desnivel</span><span>${(Math.abs(p.s) / 100 * p.L).toFixed(1)} m</span></div>`);
+      return;
+    }
+    limpiarSeleccion(); ficha(fichaVacia);
+  });
+
+  $('b-bogota').onclick = () => mapa.flyTo({ ...BOGOTA, duration: reducir ? 0 : 2800 });
+  $('b-chapinero').onclick = () => mapa.flyTo({ ...PASOS.explorar.camara, duration: reducir ? 0 : 2400 });
+  $('b-inicio').onclick = () => window.scrollTo({ top: 0, behavior: reducir ? 'auto' : 'smooth' });
+  // ---------- scroll ----------
+  const indice = document.getElementById('indice');
+  document.querySelectorAll('.paso').forEach(p => {
+    const b = document.createElement('button');
+    b.dataset.paso = p.dataset.paso; b.setAttribute('aria-label', 'Ir al paso ' + p.dataset.paso);
+    b.onclick = () => p.scrollIntoView({ behavior: reducir ? 'auto' : 'smooth' });
+    indice.appendChild(b);
+  });
+  const obs = new IntersectionObserver(entradas => {
+    entradas.forEach(e => { if (e.isIntersecting && e.target.dataset.paso !== pasoActual) irA(e.target.dataset.paso); });
+  }, { threshold: 0.55 });
+  document.querySelectorAll('.paso').forEach(p => obs.observe(p));
+})();
+</script>
+</body>
+</html>

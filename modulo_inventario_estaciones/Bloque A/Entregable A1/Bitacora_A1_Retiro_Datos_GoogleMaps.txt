@@ -1,0 +1,144 @@
+BITÁCORA METODOLÓGICA
+A1. RETIRO DE DATOS DE GOOGLE MAPS DEL CIRCUITO DE ANÁLISIS
+================================================================
+
+Proyecto:
+Ruteo energético para vehículos eléctricos.
+
+Fecha:
+20 de agosto de 2026
+
+Zona horaria:
+America/Bogota
+
+Actividad:
+A1 - Retiro de los datos de Google Maps del circuito de análisis.
+
+ESTADO:
+A1 COMPLETADO
+
+
+1. ANTECEDENTE Y ARCHIVO DE REFERENCIA INTERNA
+------------------------------------------------
+
+Durante una etapa exploratoria previa del proyecto se recopilaron
+datos de estaciones de carga eléctrica mediante Google Maps. Estos
+datos permitieron realizar un contraste preliminar con la
+información obtenida desde OpenStreetMap.
+
+Los registros históricos de Google Maps NO fueron eliminados.
+Fueron conservados como material de referencia interna, con fines
+de documentación histórica del proceso realizado previamente.
+
+Estado del material archivado:
+ARCHIVADO - REFERENCIA INTERNA - NO UTILIZAR EN EL ANÁLISIS.
+
+Los datos archivados se mantienen exclusivamente para:
+
+- documentación histórica;
+- referencia interna del proceso realizado previamente.
+
+
+2. DECISIÓN METODOLÓGICA
+------------------------
+
+Como decisión metodológica, los datos de Google Maps fueron
+retirados del circuito analítico vigente.
+
+A partir de esta decisión, Google Maps no participa en:
+
+- cálculos;
+- validaciones;
+- clasificaciones;
+- figuras;
+- mapas;
+- resultados;
+- conclusiones.
+
+En consecuencia, los datos, coordenadas, nombres, distancias y
+atributos históricos provenientes de Google Maps no se utilizan
+para generar ni modificar los resultados actuales del proyecto.
+
+
+3. CIRCUITO ANALÍTICO VIGENTE
+-----------------------------
+
+El circuito analítico vigente utiliza fuentes reproducibles
+declaradas en la metodología:
+
+- OpenStreetMap: fuente de descubrimiento.
+- OpenChargeMap: fuente de contraste.
+
+Google Maps queda fuera del circuito analítico vigente.
+
+
+4. JUSTIFICACIÓN DE LA DECISIÓN
+-------------------------------
+
+La decisión tiene como finalidad separar claramente los datos
+obtenidos durante la etapa exploratoria de los datos utilizados en
+los resultados definitivos.
+
+De esta manera, se evita que el análisis vigente dependa de los
+registros históricos de Google Maps y se establece un circuito
+analítico sustentado en las fuentes actualmente definidas para el
+proyecto.
+
+Esta decisión responde a limitaciones concretas de la fuente y no
+a un simple cambio de preferencia:
+
+- Restricción de uso. Las condiciones de servicio de Google no
+  autorizan almacenar de forma permanente su contenido ni construir
+  con él una base de datos propia. La restricción aplica tanto a la
+  extracción directa como al uso de la API oficial, por lo que
+  cambiar el método de acceso no elimina el impedimento de fondo.
+
+- Imposibilidad de compartir el insumo. Un conjunto de datos que no
+  puede almacenarse ni redistribuirse tampoco puede entregarse como
+  soporte del proyecto ni adjuntarse a los resultados, lo que limita
+  su uso como fuente formal dentro de un trabajo académico.
+
+- Inestabilidad de la fuente. La información de Google Maps cambia
+  con el tiempo y no cuenta con un mecanismo de versión o fecha de
+  consulta que otra persona pueda verificar de forma independiente,
+  lo que dificulta repetir la extracción bajo las mismas
+  condiciones.
+
+- Ventaja de las fuentes vigentes. OpenStreetMap y OpenChargeMap
+  permiten registrar la fecha de consulta, conservan historial de
+  versiones y autorizan la redistribución de su contenido, lo que
+  permite sustentar el análisis en fuentes verificables y
+  reutilizables por terceros.
+
+En conjunto, estas razones sustentan el retiro de Google Maps del
+circuito analítico vigente y su reemplazo por fuentes que sí pueden
+documentarse, verificarse y compartirse junto con los resultados
+del proyecto.
+
+
+5. UBICACIÓN DEL MATERIAL HISTÓRICO
+-----------------------------------
+
+Los datos históricos de Google Maps se conservan en una carpeta
+separada del repositorio principal. Esta carpeta debe permanecer
+FUERA del repositorio principal.
+
+Los archivos contenidos en ella no deben ser incorporados al
+pipeline analítico vigente ni utilizados para producir cálculos,
+validaciones, clasificaciones, figuras, mapas, resultados o
+conclusiones.
+
+
+6. CIERRE DEL ENTREGABLE
+------------------------
+
+La actividad A1 se considera completada cuando:
+
+- los datos históricos de Google Maps están archivados;
+- el archivo se encuentra fuera del repositorio principal;
+- el material está identificado como referencia interna;
+- Google Maps no participa en el circuito analítico vigente;
+- la decisión queda registrada en esta bitácora metodológica.
+
+Estado final:
+A1 COMPLETADO

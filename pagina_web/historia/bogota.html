@@ -1,0 +1,2745 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Ruteo energético urbano</title>
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght,SOFT,WONK@0,9..144,200..800,0..100,0..1;1,9..144,200..800,0..100,0..1&family=Inter+Tight:wght@300..600&display=swap">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/maplibre-gl/5.24.0/maplibre-gl.min.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/maplibre-gl/5.24.0/maplibre-gl.min.js"></script>
+<script>
+  // Si el CDN no responde, se usa la copia de maplibre que ya está en esta carpeta.
+  if (!window.maplibregl) {
+    document.write('<link rel="stylesheet" href="maplibre-gl.css">');
+    document.write('<scr' + 'ipt src="maplibre-gl.js"><\/scr' + 'ipt>');
+  }
+</script>
+<script>
+  // Solo para pruebas sin internet: ?local=1 usa copias locales de las fuentes.
+  if (new URLSearchParams(location.search).has("local")) {
+    const l = document.createElement("link"); l.rel = "stylesheet"; l.href = "fuentes/local.css";
+    document.head.appendChild(l);
+  }
+</script>
+<style>
+:root{
+  /* La noche de la página que aprobaste, un punto más profunda. */
+  --noche:#0b1522; --noche2:#0e1a29; --panel:#111f31; --linea:#1c2d42; --linea2:#2a405c;
+  --tinta:#eef2f6; --tinta2:#aebccb; --tinta3:#71859c;
+  /* Dos acentos con oficio fijo: cian para el dato, brasa para la energía. */
+  --cian:#6fe3f0; --brasa:#ff7a45;
+  /* Terreno: tres pasos de un mismo recorrido, ordenados por luminosidad. */
+  --plano:#2f7c93; --cruzado:#45b4c7; --ladera:#9eeef6;
+  /* Fuentes de estaciones: validadas contra daltonismo sobre este fondo. */
+  --osm:#269da9; --ocm:#9575e2; --ambas:#ae8521;
+  --display:"Fraunces", Georgia, serif;
+  --texto:"Inter Tight", system-ui, sans-serif;
+  --margen:clamp(1.25rem, 6vw, 6.5rem);
+}
+*{box-sizing:border-box}
+/* El tamaño base sale del ancho y también del alto de la ventana: en una ventana
+   baja todo se achica junto, como una diapositiva, en vez de salirse por abajo. */
+html{scroll-snap-type:y mandatory; scroll-behavior:smooth; background:var(--noche);
+  font-size:clamp(11px, min(1.15vw, 1.9vh), 19px)}
+body{margin:0; background:var(--noche); color:var(--tinta);
+  font:400 1rem/1.62 var(--texto);
+  font-variant-numeric:tabular-nums; -webkit-font-smoothing:antialiased; overflow-x:hidden}
+h1,h2,h3{font-family:var(--display); font-weight:300; margin:0; letter-spacing:-.018em;
+  font-variation-settings:"opsz" 144, "SOFT" 30, "WONK" 0}
+p{margin:0 0 1em}
+b{font-weight:600}
+
+/* ───────────────────────────────────────────────────────────── escenas */
+/* A la derecha se reserva una franja para el índice: el contenido nunca queda debajo. */
+.escena{position:relative; min-height:100svh; height:100svh; scroll-snap-align:start;
+  overflow:hidden; display:grid; padding:4.6rem calc(var(--margen) + 2.6rem) 3rem var(--margen)}
+.escena + .escena{border-top:1px solid rgba(28,45,66,.6)}
+.fase{font-size:.86rem; color:var(--tinta3); display:flex; align-items:center; gap:.7rem;
+  margin-bottom:1.3rem}
+.fase::before{content:""; width:28px; height:1px; background:var(--tinta3)}
+.titulo{font-size:3.7rem; line-height:1.02; max-width:16ch}
+.entrada{font-size:1.24rem; color:var(--tinta2); max-width:44ch;
+  margin-top:1.4rem; line-height:1.55}
+.nota{font-size:.84rem; color:var(--tinta3); max-width:52ch; line-height:1.5}
+.cifra{font-family:var(--display); font-weight:300; letter-spacing:-.035em; line-height:.9;
+  font-variation-settings:"opsz" 144, "SOFT" 0, "WONK" 0}
+
+/* Revelado: una sola coreografía por escena, al entrar. */
+.revela{opacity:0; transform:translateY(14px); transition:opacity .9s ease, transform .9s cubic-bezier(.2,.7,.2,1)}
+.activa .revela{opacity:1; transform:none}
+.activa .revela.d1{transition-delay:.12s} .activa .revela.d2{transition-delay:.26s}
+.activa .revela.d3{transition-delay:.42s} .activa .revela.d4{transition-delay:.6s}
+
+/* ───────────────────────────────────────────────────────────── índice */
+/* Sólo las rayitas reciben el cursor. Los nombres flotan a su izquierda sin ocupar
+   lugar ni atrapar el cursor, así que acercarse a una tabla ya no abre nada. */
+#indice{position:fixed; right:.9rem; top:50%; transform:translateY(-50%);
+  z-index:20; display:flex; flex-direction:column; gap:.1rem; width:2rem}
+#indice button{all:unset; cursor:pointer; position:relative; display:flex; align-items:center;
+  justify-content:flex-end; height:1.15rem; color:var(--tinta3); font:500 .75rem var(--texto)}
+#indice button span{position:absolute; right:calc(100% + .6rem); top:50%; white-space:nowrap;
+  pointer-events:none; opacity:0; transform:translate(6px,-50%); transition:opacity .25s, transform .25s;
+  background:rgba(11,21,34,.92); padding:.15rem .5rem; border-radius:4px}
+#indice button i{display:block; width:.85rem; height:2px; border-radius:2px; background:var(--linea2);
+  transition:width .35s, background .35s}
+#indice:hover button span, #indice button:focus-visible span{opacity:1; transform:translate(0,-50%)}
+#indice button[aria-current="true"]{color:var(--tinta)}
+#indice button[aria-current="true"] i{width:1.8rem; background:var(--cian)}
+#indice.aviso button[aria-current="true"] span{opacity:1; transform:translate(0,-50%)}
+#indice button:focus-visible{outline:2px solid var(--cian); outline-offset:3px; border-radius:2px}
+
+#marca{position:fixed; left:var(--margen); top:1.5rem; z-index:20;
+  font-size:.8rem; color:var(--tinta3); display:flex; gap:1.1rem; align-items:baseline}
+#marca strong{font-weight:500; color:var(--tinta2)}
+#marca{transition:opacity .4s}
+body.en-portada #marca{opacity:0}
+body.en-final #marca{opacity:0; pointer-events:none}
+body:not(.en-portada) #teclas{opacity:0; pointer-events:none}
+#teclas{transition:opacity .4s}
+#teclas{position:fixed; left:var(--margen); bottom:1.1rem; z-index:20;
+  font-size:.74rem; color:var(--tinta3); opacity:.8}
+kbd{font:500 .7rem var(--texto); border:1px solid var(--linea2); border-bottom-width:2px;
+  border-radius:3px; padding:.05rem .35rem; color:var(--tinta2)}
+
+/* ───────────────────────────────────────────────────────────── portada */
+#portada{align-content:space-between}
+.portada-cabeza{display:flex; justify-content:space-between; gap:2rem; color:var(--tinta3);
+  font-size:.86rem; padding-top:1.2rem}
+.portada-cabeza div:last-child{text-align:right}
+.escalon{position:relative; margin:0; font-size:4.75rem; line-height:1.04;
+  font-weight:300; font-variation-settings:"opsz" 144,"SOFT" 40,"WONK" 0}
+.escalon span{display:block; white-space:nowrap}
+.escalon span:nth-child(2){padding-left:1.15em} .escalon span:nth-child(3){padding-left:2.3em}
+.escalon span:nth-child(4){padding-left:3.45em; font-style:italic; font-variation-settings:"opsz" 144,"SOFT" 70,"WONK" 1}
+#perfilTitulo{position:absolute; inset:0; overflow:visible; pointer-events:none}
+.portada-pie{display:grid; grid-template-columns:repeat(3, auto); justify-content:start;
+  gap:4.5rem; font-size:.92rem; color:var(--tinta2)}
+.portada-pie small{display:block; font-size:.74rem; color:var(--tinta3); margin-bottom:.25rem}
+.baja{position:absolute; right:calc(var(--margen) + 2.6rem); bottom:3rem; color:var(--tinta3);
+  font-size:.8rem; display:flex; align-items:center; gap:.7rem}
+.baja::after{content:""; width:1px; height:42px; background:linear-gradient(var(--tinta3), transparent);
+  animation:baja 2.2s ease-in-out infinite}
+@keyframes baja{0%,100%{transform:scaleY(.4); transform-origin:top}50%{transform:scaleY(1); transform-origin:top}}
+
+/* ───────────────────────────────────────────────────────────── dos columnas */
+.par{display:grid; grid-template-columns:minmax(0,.92fr) minmax(0,1.08fr); gap:4.5rem;
+  align-items:center; max-width:92rem; width:100%; margin:0 auto}
+
+/* ─────────────────────────────────────────────── la idea: la cuesta */
+#cuesta{width:100%; height:auto; overflow:visible}
+#cuesta .suelo{fill:url(#gradSuelo)}
+#cuesta .via{fill:none; stroke:var(--linea2); stroke-width:2.5; stroke-linecap:round}
+#cuesta .tramo{fill:none; stroke-width:4; stroke-linecap:round}
+#cuesta text{font:500 13px var(--texto); fill:var(--tinta2)}
+#cuesta .rot{font:400 12px var(--texto); fill:var(--tinta3)}
+
+/* ─────────────────────────────────────────────── la pregunta */
+#pregunta{align-content:center}
+.preguntas{max-width:74rem}
+.preguntas h2{font-size:3.1rem; line-height:1.1; font-weight:300;
+  max-width:24ch}
+.preguntas h2 + h2{margin-top:2rem; color:var(--tinta2)}
+.porque{margin-top:2.6rem; display:flex; gap:3rem;
+  flex-wrap:wrap; border-top:1px solid var(--linea); padding-top:1.4rem; max-width:66rem}
+.porque div{max-width:30ch; font-size:.92rem; color:var(--tinta2)}
+.porque b{display:block; color:var(--tinta); font-weight:500; margin-bottom:.2rem}
+
+/* ─────────────────────────────────────────────── fase 1: estaciones */
+.grande{display:flex; align-items:baseline; gap:.9rem; margin:1.6rem 0 .3rem}
+.grande .cifra{font-size:6.6rem; font-weight:360}
+.grande span{font-family:var(--display); font-size:1.8rem; color:var(--tinta2);
+  font-weight:300}
+#venn{width:100%; height:auto; overflow:visible}
+#venn text{font:500 13.5px var(--texto); fill:var(--tinta2)}
+#venn .cuenta{font:300 30px var(--display); fill:var(--tinta)}
+.leyenda{display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:.45rem 1.4rem;
+  margin-top:1.2rem; font-size:.84rem; color:var(--tinta2)}
+.leyenda div{display:flex; align-items:center; gap:.6rem}
+.leyenda i{width:11px; height:11px; border-radius:50%; flex:none}
+.leyenda b{margin-left:auto; color:var(--tinta); font-weight:500}
+.regla{margin-top:1.6rem; padding:1rem 1.15rem; border-left:2px solid var(--brasa);
+  background:linear-gradient(90deg, rgba(255,122,69,.07), transparent); max-width:46ch}
+.regla b{display:block; font-weight:500; margin-bottom:.2rem}
+
+/* ─────────────────────────────────────────────── fase 3: carros */
+.flota{display:grid; gap:.1rem; width:100%}
+.carro{display:grid; grid-template-columns:minmax(9rem,1.2fr) minmax(7rem,1.5fr) 3.8rem 6rem 5.4rem;
+  gap:1rem; align-items:center; padding:.55rem .2rem; border-bottom:1px solid rgba(28,45,66,.7);
+  font-size:.9rem}
+.carro .nom{color:var(--tinta); font-weight:500; line-height:1.25}
+.carro .nom small{display:block; color:var(--tinta3); font-weight:400; font-size:.74rem}
+.carro .num{text-align:right; color:var(--tinta2)}
+.carro .num b{color:var(--tinta); font-weight:500}
+.carro.cabeza{border-bottom:1px solid var(--linea2); font-size:.74rem; color:var(--tinta3); padding-bottom:.55rem}
+.carro.cabeza .num{color:var(--tinta3)}
+.pila{position:relative; height:13px}
+.pila svg{width:100%; height:13px; overflow:visible}
+.sello{font-size:.7rem; padding:.12rem .45rem; border-radius:2px; justify-self:start;
+  border:1px solid var(--linea2); color:var(--tinta3)}
+.sello.si{border-color:rgba(111,227,240,.45); color:var(--cian)}
+.carro.minimo .nom{color:var(--cian)}
+
+/* ─────────────────────────────────────────────── fase 4: resultado */
+.trio{display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:3.6rem;
+  margin-top:1.8rem; max-width:72rem}
+.bloque h3{font-family:var(--texto); font-size:.95rem; font-weight:500; color:var(--tinta2); letter-spacing:0}
+.bloque .cifra{font-size:3.9rem; margin:.3rem 0 .7rem; display:block}
+.bloque .cifra small{font-size:.42em; margin-left:.08em; color:var(--tinta2)}
+.cien{display:grid; grid-template-columns:repeat(10,1fr); gap:.2rem; max-width:9.6rem}
+.cien i{aspect-ratio:1; border-radius:2px; background:var(--linea); transition:background .3s}
+.bloque .nota{margin-top:.9rem}
+
+/* ─────────────────────────────────────────────── fase 5 */
+.barras{display:grid; gap:.55rem; width:100%}
+.barra{display:grid; grid-template-columns:minmax(9rem,12rem) 1fr 3.4rem; gap:.9rem; align-items:center;
+  font-size:.84rem}
+.barra span{color:var(--tinta2); white-space:nowrap; overflow:hidden; text-overflow:ellipsis}
+.barra .valor{text-align:right; color:var(--tinta); font-weight:500}
+.barra .pista{height:10px; position:relative}
+.barra .pista i{position:absolute; inset:0 auto 0 0; width:0; border-radius:0 4px 4px 0;
+  background:var(--cian); transition:width 1.1s cubic-bezier(.2,.7,.2,1)}
+.barra.minimo span{color:var(--cian)}
+#gVolver{width:100%; height:auto; overflow:visible}
+#gVolver text{font:400 12.5px var(--texto); fill:var(--tinta3)}
+#gVolver .loc{fill:var(--tinta2)}
+#gVolver .vl{font-weight:500; fill:var(--tinta)}
+.clave{display:flex; gap:1.3rem; font-size:.82rem; color:var(--tinta2); margin-bottom:.6rem}
+.clave span{display:flex; align-items:center; gap:.5rem}
+.clave i{width:10px; height:10px; border-radius:50%}
+
+#sug{position:fixed; z-index:40; pointer-events:none; background:var(--panel);
+  border:1px solid var(--linea2); border-radius:3px; padding:.55rem .7rem; font-size:.8rem;
+  line-height:1.45; color:var(--tinta); opacity:0; transition:opacity .12s; max-width:18rem;
+  box-shadow:0 18px 40px -18px rgba(0,0,0,.9)}
+#sug.vivo{opacity:1}
+
+/* ─────────────────────────────────────────────── escenas con mapa dibujado */
+.par-mapa{grid-template-columns:minmax(0,.7fr) minmax(0,1.3fr); height:100%}
+.lienzo-caja{position:relative; height:100%; min-height:60vh}
+.lienzo-caja canvas{position:absolute; inset:0; width:100%; height:100%}
+.cargando-lienzo{position:absolute; inset:0; display:grid; place-items:center; color:var(--tinta3);
+  font-size:.85rem; transition:opacity .5s}
+.cargando-lienzo.ido{opacity:0; pointer-events:none}
+.cuentas{display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:1.1rem 1.6rem; margin:1.8rem 0 1.4rem;
+  max-width:30rem}
+.cuentas div{border-top:1px solid var(--linea); padding-top:.6rem}
+.cuentas .cifra{font-size:2.4rem; display:block}
+.cuentas small{font-size:.8rem; color:var(--tinta3)}
+.cuentas .alerta .cifra{color:var(--brasa)}
+.escalera{display:flex; height:9px; border-radius:2px; overflow:hidden; max-width:30rem}
+.escalera i{flex:1}
+.escalera-pie{display:flex; justify-content:space-between; max-width:30rem; font-size:.74rem;
+  color:var(--tinta3); margin-top:.35rem}
+.reparto{display:flex; align-items:flex-end; gap:3px; height:44px; max-width:30rem; margin-top:1.1rem}
+.reparto i{flex:1; border-radius:2px 2px 0 0; min-height:2px}
+.boton{all:unset; cursor:pointer; display:inline-flex; align-items:center; gap:.6rem;
+  font:500 .9rem var(--texto); color:var(--tinta); padding:.7rem 1.1rem; border-radius:999px;
+  border:1px solid var(--linea2); background:rgba(17,31,49,.7); transition:background .2s, border-color .2s}
+.boton:hover{background:#17293f; border-color:var(--cian)}
+.boton:focus-visible{outline:2px solid var(--cian); outline-offset:3px}
+.boton.lleno{background:var(--brasa); border-color:var(--brasa); color:#1d0c05}
+.boton.lleno:hover{background:#ff8c5c}
+.boton[disabled]{opacity:.4; pointer-events:none}
+.datos{display:grid; gap:0; margin:1.3rem 0 1.4rem; max-width:30rem}
+.datos div{display:flex; justify-content:space-between; gap:1rem; padding:.5rem 0;
+  border-bottom:1px solid rgba(28,45,66,.8); font-size:.92rem}
+.datos span{color:var(--tinta3)} .datos b{font-weight:500}
+.lineas-clave{display:flex; gap:1.4rem; font-size:.85rem; color:var(--tinta2); margin-top:1.2rem}
+.lineas-clave span{display:flex; align-items:center; gap:.55rem}
+.lineas-clave i{width:24px; height:3px; border-radius:2px}
+.contexto{font-size:.84rem; color:var(--tinta3); max-width:30rem; margin-bottom:1.2rem}
+
+/* ─────────────────────────────────────────────── narrativa */
+.deja{font-size:.92rem; color:var(--tinta2); max-width:46ch; margin:1.3rem 0 0; padding-left:.9rem;
+  border-left:2px solid var(--cian)}
+.deja b{font-weight:500; color:var(--tinta)}
+.fases{position:relative; display:grid; grid-template-columns:repeat(6,minmax(0,1fr)); gap:1.6rem;
+  margin-top:3.4rem}
+.fases .hilo{position:absolute; left:1.1rem; right:1.1rem; top:1.05rem; height:2px; background:var(--linea2);
+  transform:scaleX(0); transform-origin:left; transition:transform 2.2s cubic-bezier(.4,.1,.2,1) .4s}
+.activa .fases .hilo{transform:scaleX(1)}
+.f{position:relative; opacity:0; transform:translateY(10px); transition:opacity .6s, transform .6s}
+.activa .f{opacity:1; transform:none}
+.activa .f:nth-child(2){transition-delay:.55s} .activa .f:nth-child(3){transition-delay:.85s}
+.activa .f:nth-child(4){transition-delay:1.15s} .activa .f:nth-child(5){transition-delay:1.45s}
+.activa .f:nth-child(6){transition-delay:1.75s} .activa .f:nth-child(7){transition-delay:2.05s}
+.f i{display:grid; place-items:center; width:2.2rem; height:2.2rem; border-radius:50%; font-style:normal;
+  font:400 1.05rem var(--display); background:var(--noche); border:1.5px solid var(--cian); color:var(--cian);
+  margin-bottom:1rem}
+.f b{display:block; font-weight:500; font-size:1rem; line-height:1.3; margin-bottom:.4rem}
+.f span{display:block; font-size:.86rem; color:var(--tinta3); line-height:1.45}
+.f.fuera i{border-color:var(--linea2); color:var(--tinta3); border-style:dashed}
+.f.fuera b{color:var(--tinta3)}
+.hallazgos{display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:3.2rem; margin-top:2.2rem}
+.hallazgo{border-top:1px solid var(--linea2); padding-top:1.1rem}
+.hallazgo .cifra{font-size:4.4rem; display:block; color:var(--cian)}
+.hallazgo .cifra small{font-size:.4em; color:var(--tinta2); margin-left:.1em; letter-spacing:0}
+.hallazgo p{margin:.9rem 0 0; color:var(--tinta2); font-size:1rem; max-width:32ch; line-height:1.5}
+.cierre{display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:3.2rem; margin-top:2.4rem;
+  max-width:70rem}
+.cierre h3{font-family:var(--texto); font-weight:500; font-size:.9rem; color:var(--tinta3); letter-spacing:0;
+  margin-bottom:.6rem}
+.cierre ul{margin:0; padding:0; list-style:none}
+.cierre li{position:relative; padding:.32rem 0 .32rem 1.1rem; font-size:.92rem; color:var(--tinta2); line-height:1.45}
+.cierre li::before{content:""; position:absolute; left:0; top:.95em; width:.45rem; height:1px; background:var(--tinta3)}
+
+/* ─────────────────────────────────────────────── verificación */
+.verif{align-items:center}
+.leccion{margin:1.8rem 0 .4rem; display:grid; gap:1rem; max-width:34rem}
+.tira{display:grid; grid-template-columns:1fr auto; gap:.3rem 1rem; align-items:center; font-size:.86rem;
+  color:var(--tinta3)}
+.tira span{grid-column:1 / -1}
+.tira .pista{height:.7rem; position:relative}
+.tira .pista i{position:absolute; inset:0 auto 0 0; width:0; min-width:3px; border-radius:2px;
+  background:var(--tinta2); transition:width 1.6s cubic-bezier(.3,.6,.2,1)}
+.tira b{font-family:var(--display); font-weight:400; font-size:1.25rem; color:var(--tinta2); min-width:6.5ch;
+  text-align:right}
+.tira.real .pista i{background:var(--brasa)}
+.tira.real b{color:var(--brasa)}
+.prueba-g{display:grid; grid-template-columns:9.5rem 1fr; gap:1.6rem; align-items:center;
+  padding:1.15rem 0; border-top:1px solid var(--linea)}
+.prueba-g:last-of-type{border-bottom:1px solid var(--linea)}
+.prueba-g .cifra{font-size:3.3rem; color:var(--cian); white-space:nowrap}
+.prueba-g .cifra small{font-size:.38em; color:var(--tinta3); letter-spacing:0; margin-left:.15em}
+.prueba-g b{font-weight:500; display:block; font-size:1rem; line-height:1.35}
+.prueba-g small{display:block; color:var(--tinta3); font-size:.82rem; margin-top:.25rem; line-height:1.45}
+.detalle-caja{max-height:62vh; overflow:auto; padding-right:.6rem; scrollbar-width:thin;
+  scrollbar-color:var(--linea2) transparent}
+.cita{font-family:var(--display); font-size:2.05rem; line-height:1.18; font-weight:300;
+  font-style:italic; font-variation-settings:"opsz" 144,"SOFT" 60,"WONK" 1; max-width:24ch;
+  margin:1.4rem 0 1.2rem}
+.pruebas{width:100%; border-collapse:collapse; font-size:.86rem}
+.pruebas td{padding:.42rem .3rem; border-bottom:1px solid rgba(28,45,66,.8); vertical-align:top}
+.pruebas td:last-child{text-align:right; white-space:nowrap}
+.pasa{color:var(--cian)} .falla{color:var(--brasa)}
+.pruebas small{display:block; color:var(--tinta3); font-size:.76rem}
+
+/* ─────────────────────────────────────────────── final: Bogotá completa */
+#final{padding:0; display:block}
+#mapaFinal{position:absolute; inset:0}
+.maplibregl-ctrl-attrib{font-size:10px!important; background:rgba(11,21,34,.8)!important}
+.maplibregl-ctrl-attrib a{color:var(--tinta3)!important}
+.maplibregl-ctrl-group{background:var(--panel)!important; border:1px solid var(--linea2)}
+.maplibregl-ctrl-group button span{filter:invert(.85)}
+.tablero{position:absolute; z-index:5; left:clamp(.8rem,2vw,1.6rem); top:clamp(.8rem,2vh,1.4rem);
+  bottom:clamp(.8rem,2vh,1.4rem); width:min(25rem, calc(100vw - 1.6rem)); display:flex; flex-direction:column;
+  background:rgba(14,26,41,.94); backdrop-filter:blur(16px) saturate(1.1); border:1px solid var(--linea2);
+  border-radius:10px; box-shadow:0 30px 70px -30px rgba(0,0,0,.95); overflow:hidden}
+.tablero header{padding:1rem 1.3rem .8rem; border-bottom:1px solid var(--linea)}
+.tablero header h2{font-size:1.65rem; font-weight:350}
+.tablero header p{font-size:.82rem; color:var(--tinta3); margin:.35rem 0 0}
+.tablero .cuerpo{overflow:auto; padding:.4rem 1.3rem 1.2rem; scrollbar-width:thin;
+  scrollbar-color:var(--linea2) transparent}
+.paso{padding:.8rem 0 .75rem; border-bottom:1px solid var(--linea)}
+.paso:last-child{border-bottom:0}
+.paso h3{font:500 .8rem var(--texto); color:var(--tinta3); letter-spacing:0; margin-bottom:.7rem;
+  display:flex; align-items:center; gap:.55rem}
+.paso h3 em{font-style:normal; width:19px; height:19px; border-radius:50%; display:grid; place-items:center;
+  background:var(--linea); color:var(--tinta2); font-size:.7rem}
+.carros{display:grid; grid-template-columns:1fr 1fr; gap:.4rem}
+.carros button{all:unset; cursor:pointer; padding:.42rem .55rem; border-radius:7px; border:1px solid var(--linea);
+  background:rgba(11,21,34,.6); font-size:.72rem; line-height:1.3; color:var(--tinta3); min-width:0;
+  transition:border-color .2s, background .2s}
+.carros button b{display:block; color:var(--tinta); font-weight:500; font-size:.8rem;
+  white-space:nowrap; overflow:hidden; text-overflow:ellipsis}
+.carros button:hover{border-color:var(--linea2); background:#132338}
+.carros button[aria-pressed="true"]{border-color:var(--cian); background:rgba(111,227,240,.08)}
+.carros button:focus-visible{outline:2px solid var(--cian); outline-offset:2px}
+.deslizador{display:flex; align-items:center; gap:.9rem}
+.deslizador input{flex:1; accent-color:var(--cian)}
+.deslizador b{font-family:var(--display); font-size:1.5rem; font-weight:400; min-width:3.4ch; text-align:right}
+.puntos{display:grid; grid-template-columns:1fr 1fr; gap:.45rem}
+.punto-btn{all:unset; cursor:pointer; padding:.6rem .7rem; border-radius:7px; border:1px dashed var(--linea2);
+  font-size:.8rem; color:var(--tinta3); transition:all .2s}
+.punto-btn b{display:block; font-weight:500; color:var(--tinta2); font-size:.84rem}
+.punto-btn.espera{border-style:solid; border-color:var(--cian); color:var(--cian)}
+.punto-btn.listo{border-style:solid; border-color:var(--linea2)}
+.punto-btn.listo b{color:var(--tinta)}
+.acciones{display:flex; gap:.5rem; margin-top:.8rem}
+.acciones .boton{flex:1; justify-content:center; padding:.65rem .8rem; font-size:.86rem}
+.acciones .boton.chico{flex:0 0 auto}
+.comparar{display:grid; grid-template-columns:1fr 1fr; gap:.5rem}
+.comparar div{padding:.65rem .7rem; border-radius:7px; background:rgba(11,21,34,.7); border:1px solid var(--linea)}
+.comparar small{display:flex; align-items:center; gap:.45rem; font-size:.74rem; color:var(--tinta3)}
+.comparar small i{width:14px; height:3px; border-radius:2px}
+.comparar b{display:block; font-family:var(--display); font-weight:400; font-size:1.35rem; margin-top:.2rem}
+.comparar span{font-size:.78rem; color:var(--tinta2)}
+.veredicto{margin:.7rem 0 .2rem; font-size:.9rem; color:var(--tinta2)}
+.veredicto b{color:var(--cian); font-weight:500}
+.pila-grande{position:relative; height:24px; border:1.5px solid var(--linea2); border-radius:5px; margin:.5rem 0 .3rem}
+.pila-grande::after{content:""; position:absolute; right:-6px; top:6px; width:4px; height:9px;
+  border-radius:1px; background:var(--linea2)}
+.pila-grande i{position:absolute; left:2px; top:2px; bottom:2px; border-radius:3px; transition:width .8s}
+.pila-grande i.gasto{background:repeating-linear-gradient(135deg, rgba(255,122,69,.55) 0 4px, rgba(255,122,69,.25) 4px 8px)}
+.pila-pie{display:flex; justify-content:space-between; font-size:.74rem; color:var(--tinta3)}
+#perfilFinal{width:100%; height:96px; display:block; margin-top:.6rem}
+.capas{position:absolute; z-index:5; top:clamp(.8rem,2vh,1.4rem); right:clamp(3.8rem,6vw,5.5rem);
+  display:flex; gap:.4rem}
+.capas button{all:unset; cursor:pointer; font:500 .8rem var(--texto); padding:.5rem .85rem; border-radius:999px;
+  background:rgba(14,26,41,.9); border:1px solid var(--linea2); color:var(--tinta3); backdrop-filter:blur(10px)}
+.capas button[aria-pressed="true"]{color:var(--tinta); border-color:var(--cian)}
+.capas button:focus-visible{outline:2px solid var(--cian); outline-offset:2px}
+.leyenda-mapa{position:absolute; z-index:5; right:clamp(3.4rem,4.5vw,4.4rem); bottom:2.2rem; width:13rem;
+  background:rgba(14,26,41,.9); border:1px solid var(--linea2); border-radius:8px; padding:.7rem .8rem;
+  font-size:.72rem; color:var(--tinta3); backdrop-filter:blur(10px)}
+.marcador-carro{width:18px; height:18px; border-radius:50%; background:var(--brasa);
+  box-shadow:0 0 0 4px rgba(255,122,69,.28), 0 0 22px 6px rgba(255,122,69,.55); border:2px solid #fff4ee}
+.marcador-punto{font:600 .7rem var(--texto); color:var(--noche); background:var(--tinta); border-radius:999px;
+  padding:.18rem .5rem; box-shadow:0 6px 16px -6px rgba(0,0,0,.8)}
+.maplibregl-popup-content{background:var(--panel)!important; color:var(--tinta); border:1px solid var(--linea2);
+  border-radius:8px!important; font:400 .82rem/1.45 var(--texto); padding:.7rem .85rem!important}
+.maplibregl-popup-tip{border-top-color:var(--panel)!important; border-bottom-color:var(--panel)!important}
+.maplibregl-popup-close-button{color:var(--tinta3)}
+.ficha-est strong{display:block; font-weight:500; font-size:.95rem; line-height:1.3}
+.ficha-est em{display:block; font-style:normal; color:var(--tinta3); font-size:.76rem; margin:.15rem 0 .5rem}
+.ficha-est .fd{display:flex; justify-content:space-between; gap:1rem; padding:.22rem 0;
+  border-top:1px solid var(--linea); font-size:.78rem}
+.ficha-est .fd span{color:var(--tinta3)} .ficha-est .fd b{font-weight:500; text-align:right}
+.ficha-est small{display:block; color:var(--tinta3); font-size:.72rem; margin-top:.4rem}
+.maplibregl-popup{pointer-events:none}
+
+
+/* ─────────────────────────────────────────────── las dos ciudades */
+/* Validados contra daltonismo sobre --noche (validate_palette.js, modo oscuro). */
+:root{ --bog:#2aa1b2; --med:#c08529; }
+.ancho{max-width:92rem; width:100%; margin:0 auto}
+.ciudad{display:inline-flex; gap:0; margin:1.1rem 0 .2rem; border:1px solid var(--linea2); border-radius:999px;
+  padding:3px; background:rgba(11,21,34,.6)}
+.ciudad button{all:unset; cursor:pointer; display:flex; align-items:center; gap:.5rem; padding:.38rem .95rem;
+  border-radius:999px; font:500 .86rem var(--texto); color:var(--tinta3); transition:background .25s, color .25s}
+.ciudad button i{width:8px; height:8px; border-radius:50%; flex:none}
+.ciudad button[aria-pressed="true"]{background:#17293f; color:var(--tinta)}
+.ciudad button:hover{color:var(--tinta)}
+.ciudad button:focus-visible{outline:2px solid var(--cian); outline-offset:2px}
+.cabeza-ciudad{display:flex; justify-content:space-between; align-items:flex-end; gap:2rem}
+.cabeza-ciudad .ciudad{margin:0 0 .3rem}
+.fuente{display:block; font-size:.72rem; color:var(--tinta3); margin-top:.35rem}
+
+/* ─────────────────────────────────────────────── problema */
+.tres{display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:3.4rem; margin-top:2.6rem}
+.tres > div{border-top:1px solid var(--linea2); padding-top:1.1rem}
+.tres h3{font-size:2.1rem; font-style:italic; font-variation-settings:"opsz" 144,"SOFT" 70,"WONK" 1;
+  color:var(--cian); margin-bottom:.8rem}
+.tres p{font-size:1.04rem; color:var(--tinta2); line-height:1.58; max-width:36ch}
+.tres p.nota{font-size:.86rem; color:var(--tinta3)}
+
+/* ─────────────────────────────────────────────── dos ciudades */
+.dos-cifras{display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:1.6rem; margin-top:1.6rem; max-width:32rem}
+.dos-cifras > div{border-top:2px solid var(--c, var(--linea2)); padding-top:.6rem}
+.dos-cifras b{display:block; font-weight:500; font-size:.92rem}
+.dos-cifras .cifra{font-size:2.5rem; display:block; margin:.25rem 0 .15rem}
+.dos-cifras .cifra small{font-size:.42em; color:var(--tinta2); letter-spacing:0; margin-left:.1em}
+.dos-cifras span{display:block; font-size:.8rem; color:var(--tinta3); line-height:1.45}
+
+/* ─────────────────────────────────────────────── objetivos */
+.general{font-family:var(--display); font-weight:300; font-size:1.95rem; line-height:1.28; max-width:28ch;
+  font-variation-settings:"opsz" 144,"SOFT" 40,"WONK" 0; margin-bottom:1.2rem}
+.objs{list-style:none; margin:0; padding:0; counter-reset:o}
+.objs li{counter-increment:o; display:grid; grid-template-columns:2.4rem 1fr; gap:.2rem 1rem;
+  padding:.8rem 0; border-top:1px solid var(--linea)}
+.objs li:last-child{border-bottom:1px solid var(--linea)}
+.objs li::before{content:counter(o); grid-row:1 / span 2; font:300 1.9rem/1 var(--display); color:var(--cian)}
+.objs p{margin:0; font-size:.95rem; line-height:1.45}
+.objs .donde{display:flex; flex-wrap:wrap; gap:.4rem .5rem; align-items:center; margin-top:.45rem;
+  font-size:.78rem; color:var(--tinta3)}
+.objs .donde button{all:unset; cursor:pointer; padding:.12rem .55rem; border-radius:999px; border:1px solid var(--linea2);
+  color:var(--tinta2); font-size:.76rem}
+.objs .donde button:hover{border-color:var(--cian); color:var(--tinta)}
+.objs .donde button:focus-visible{outline:2px solid var(--cian); outline-offset:2px}
+.objs .dato{color:var(--tinta2)}
+.f em{display:inline-block; margin-top:.6rem; font-style:normal; font-size:.74rem; color:var(--cian);
+  border:1px solid rgba(111,227,240,.35); border-radius:999px; padding:.08rem .55rem}
+
+/* ─────────────────────────────────────────────── confiabilidad */
+.cadena{display:grid; gap:0}
+.eslabon{display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1.25fr); gap:1.6rem; padding:1rem 0;
+  border-top:1px solid var(--linea); align-items:center}
+.eslabon:last-child{border-bottom:1px solid var(--linea)}
+.eslabon h3{font-family:var(--texto); font-weight:500; font-size:1rem; letter-spacing:0; margin-bottom:.3rem}
+.eslabon p{margin:0; font-size:.84rem; color:var(--tinta3); line-height:1.45}
+.par-ciudad{display:grid; grid-template-columns:1fr 1fr; gap:1rem}
+.par-ciudad > div{border-left:2px solid var(--c); padding-left:.7rem}
+.par-ciudad .cifra{font-size:2rem; display:block}
+.par-ciudad .cifra small{font-size:.45em; color:var(--tinta2); letter-spacing:0; margin-left:.08em}
+.par-ciudad span{display:block; font-size:.76rem; color:var(--tinta3); line-height:1.4}
+.metodos{display:grid; gap:.3rem; font-size:.78rem}
+.metodo{display:grid; grid-template-columns:11rem 1fr 2.6rem; gap:.6rem; align-items:center; color:var(--tinta3)}
+.metodo .pista{height:8px; position:relative}
+.metodo .pista i{position:absolute; inset:0 auto 0 0; border-radius:0 3px 3px 0; background:var(--linea2)}
+.metodo.usado{color:var(--tinta)} .metodo.usado .pista i{background:var(--cian)}
+.metodo b{font-weight:500; text-align:right}
+
+/* ─────────────────────────────────────────────── extremos */
+.apilada{margin-top:1.3rem}
+.apilada .cab{display:flex; justify-content:space-between; font-size:.86rem; margin-bottom:.35rem}
+.apilada .cab b{font-weight:500}
+.apilada .cab span{color:var(--tinta3)}
+.apilada .barra-ap{display:flex; gap:2px; height:1.7rem}
+.apilada .barra-ap i{display:flex; align-items:center; padding-left:.45rem; font-style:normal; font-size:.76rem;
+  color:var(--noche); font-weight:600; border-radius:2px; overflow:hidden; white-space:nowrap; min-width:3px}
+.clave-ap{display:flex; flex-wrap:wrap; gap:.4rem 1.2rem; font-size:.78rem; color:var(--tinta2); margin:1rem 0 1rem}
+.clave-ap span{display:flex; align-items:center; gap:.45rem}
+.clave-ap i{width:10px; height:10px; border-radius:2px}
+#gK, #gTrayecto{width:100%; height:auto; overflow:visible}
+#gK text, #gTrayecto text{font:400 12.5px var(--texto); fill:var(--tinta3)}
+#gK .et, #gTrayecto .et{font-weight:500; font-size:13.5px}
+
+/* ─────────────────────────────────────────────── resultado */
+.franja{display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:3.6rem; margin-top:1.6rem; max-width:72rem;
+  border-top:1px solid var(--linea2); padding-top:1rem}
+.franja div{font-size:.86rem; color:var(--tinta3)}
+.franja b{display:block; font-family:var(--display); font-weight:400; font-size:1.7rem; color:var(--tinta); margin-bottom:.15rem}
+
+/* ─────────────────────────────────────────────── limitaciones, hallazgos, métricas */
+.limites{display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:0 3.6rem; margin-top:2rem}
+.limite{padding:.85rem 0; border-top:1px solid var(--linea); display:grid; grid-template-columns:1.9rem 1fr; gap:0 .9rem}
+.limite > i{font:300 1.25rem/1.2 var(--display); color:var(--brasa); font-style:normal}
+.limite b{display:block; font-weight:500; font-size:.98rem; line-height:1.35; margin-bottom:.2rem}
+.limite p{margin:0; font-size:.84rem; color:var(--tinta2); line-height:1.5}
+.limite small{display:block; font-size:.7rem; color:var(--tinta3); margin-top:.25rem}
+.hallazgos.cuatro{grid-template-columns:repeat(2,minmax(0,1fr)); gap:2.2rem 4rem}
+.hallazgo h3{font-family:var(--texto); font-weight:500; font-size:1.05rem; letter-spacing:0; line-height:1.4;
+  max-width:40ch; margin-bottom:.7rem}
+.hallazgo .duo{display:flex; gap:2.6rem; align-items:flex-end}
+.hallazgo .duo div{border-left:2px solid var(--c); padding-left:.7rem}
+.hallazgo .duo .cifra{font-size:3.3rem; color:var(--tinta); display:block}
+.hallazgo .duo .cifra small{font-size:.38em; color:var(--tinta2); margin-left:.1em; letter-spacing:0}
+.hallazgo .duo span{font-size:.78rem; color:var(--tinta3)}
+.hallazgo p{margin:.7rem 0 0; color:var(--tinta3); font-size:.84rem; max-width:52ch; line-height:1.5}
+.ficha{display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:0 3.6rem; margin-top:1.6rem}
+.ficha table{width:100%; border-collapse:collapse; font-size:.84rem; margin-bottom:1.1rem; table-layout:fixed}
+.ficha th:first-child,.ficha td:first-child{width:46%}
+.ficha caption{text-align:left; font:500 .8rem var(--texto); color:var(--cian); padding:.2rem 0 .35rem}
+.ficha th{font-weight:500; text-align:right; color:var(--tinta3); font-size:.74rem; padding:.2rem .3rem;
+  border-bottom:1px solid var(--linea2)}
+.ficha th:first-child{text-align:left}
+.ficha th i{display:inline-block; width:8px; height:8px; border-radius:50%; margin-right:.4rem}
+.ficha td{padding:.36rem .3rem; border-bottom:1px solid rgba(28,45,66,.75); text-align:right; white-space:nowrap}
+.ficha td:first-child{text-align:left; color:var(--tinta2); white-space:normal}
+
+
+/* ─────────────────────────────────────────────── resultado, doce carros, aportes */
+.como-se-lee{display:flex; justify-content:space-between; align-items:flex-end; gap:3rem; margin:1.1rem 0 1.4rem; max-width:72rem}
+.como-se-lee p{margin:0; max-width:64ch; font-size:1.05rem; color:var(--tinta2); line-height:1.55}
+.como-se-lee p b{color:var(--tinta); font-weight:500}
+.filas-res{max-width:72rem}
+.eje-res{display:grid; grid-template-columns:minmax(0,.9fr) minmax(0,2fr); gap:2.4rem; height:1.2rem}
+.eje-res div{position:relative; border-bottom:1px solid var(--linea2)}
+.eje-res i{position:absolute; bottom:.25rem; transform:translateX(-50%); font-style:normal; font-size:.72rem; color:var(--tinta3)}
+.fila-res{display:grid; grid-template-columns:minmax(0,.9fr) minmax(0,2fr); gap:2.4rem; padding:.55rem 0;
+  border-bottom:1px solid var(--linea); align-items:center}
+.fila-res.total{border-bottom:0; border-top:1px solid var(--linea2); margin-top:.3rem}
+.fila-res h3{font-family:var(--texto); font-weight:500; font-size:1.02rem; letter-spacing:0; margin:0 0 .15rem}
+.fila-res p{margin:0; font-size:.8rem; color:var(--tinta3); line-height:1.4}
+.barra-res{position:relative; height:1.4rem; margin:.2rem 0; cursor:default}
+.barra-res i{position:absolute; left:0; top:0; bottom:0; width:0; border-radius:0 4px 4px 0}
+.barra-res b{position:absolute; left:.6rem; top:50%; transform:translateY(-50%); font-weight:600; font-size:.86rem;
+  color:var(--noche); white-space:nowrap; z-index:1}
+.barra-res b small{font-weight:500; font-size:.78em}
+.barra-res.corta b{color:var(--tinta); left:calc(var(--w, 0%) + .6rem)}
+#gCarros{width:100%; height:auto; overflow:visible}
+#gCarros text{font:400 12.5px var(--texto); fill:var(--tinta3)}
+#gCarros .loc{fill:var(--tinta2); font-size:13px}
+.aportes{display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:2.8rem; margin-top:2.2rem}
+.aporte{border-top:1px solid var(--linea2); padding-top:1rem}
+.aporte .cifra{display:block; font-size:3.4rem; color:var(--cian); margin-bottom:.4rem}
+.aporte b{display:block; font-weight:500; font-size:1rem; line-height:1.35; margin-bottom:.45rem}
+.aporte p{margin:0; font-size:.84rem; color:var(--tinta3); line-height:1.5}
+.comprobado{display:grid; grid-template-columns:minmax(0,1.3fr) repeat(3,minmax(0,1fr)); gap:2.4rem; align-items:end;
+  margin-top:3rem; padding-top:1.1rem; border-top:1px solid var(--linea)}
+.comprobado p{margin:0; font-size:.92rem; color:var(--tinta2); max-width:34ch; line-height:1.5}
+.comprobado b{display:block; font-family:var(--display); font-weight:400; font-size:2rem}
+.comprobado b small{font-size:.5em; color:var(--tinta3)}
+.comprobado span{font-size:.76rem; color:var(--tinta3); line-height:1.4}
+
+@media (max-width:900px){
+  .aportes,.comprobado,.fila-res,.eje-res{grid-template-columns:1fr}
+  .como-se-lee{flex-direction:column; align-items:flex-start}
+  .tres,.limites,.ficha,.hallazgos.cuatro,.franja,.dos-cifras,.par-ciudad,.eslabon{grid-template-columns:1fr}
+  .cabeza-ciudad{flex-direction:column; align-items:flex-start}
+  .par,.trio{grid-template-columns:1fr}
+  .escena{height:auto; min-height:100svh}
+  html{scroll-snap-type:none}
+  #indice,#teclas{display:none}
+  .carro{grid-template-columns:1fr 1fr 4.5rem; }
+  .carro > :nth-child(4), .carro > :nth-child(5){display:none}
+  .escalon span{white-space:normal; padding-left:0!important}
+}
+@media (prefers-reduced-motion:reduce){
+  *{animation:none!important; transition:none!important}
+  html{scroll-behavior:auto}
+  .revela{opacity:1; transform:none}
+}
+</style>
+</head>
+<body>
+
+<div id="marca"><strong>Ruteo energético</strong><span>Bogotá y Medellín</span></div>
+<nav id="indice" aria-label="Escenas"></nav>
+<div id="teclas"><kbd>↓</kbd> <kbd>↑</kbd> para avanzar · <kbd>C</kbd> cambia de ciudad</div>
+<div id="sug" role="tooltip"></div>
+
+<!-- ═════════════════════════════════════════════════════════ portada -->
+<section class="escena" id="portada" data-nombre="Portada">
+  <div class="portada-cabeza revela">
+    <div>Trabajo de grado<br>Programa de Ciencia de Datos</div>
+    <div>Universidad Externado de Colombia<br>Segundo semestre de 2026</div>
+  </div>
+  <h1 class="escalon revela d1" id="tituloEscalon">
+    <span>Ruteo energético</span>
+    <span>de vehículos eléctricos compactos</span>
+    <span>en topografía urbana</span>
+    <span>de alta pendiente</span>
+    <svg id="perfilTitulo" aria-hidden="true"></svg>
+  </h1>
+  <div class="portada-pie revela d3">
+    <div><small>Equipo</small>Jhonny Andrés Calpa Forero<br>Danna · Emily</div>
+    <div><small>Tutora</small>Diana Angélica Pulido López</div>
+    <div><small>Casos de estudio</small>Bogotá y Medellín</div>
+  </div>
+  <div class="baja revela d4">baja para empezar</div>
+</section>
+
+<!-- ═════════════════════════════════════════════════════════ la idea -->
+<section class="escena" id="idea" data-nombre="La idea">
+  <div class="par">
+    <div>
+      <h2 class="titulo revela">La ruta más corta no siempre es la que menos batería gasta</h2>
+      <p class="entrada revela d1">Una aplicación de navegación busca el camino más corto o el más
+        rápido. En un carro eléctrico eso no basta: subir una cuesta consume batería, y bajarla
+        devuelve una parte, porque el motor funciona como generador mientras frena.</p>
+      <p class="nota revela d2">En una ciudad con pendientes, el camino más corto y el que menos
+        energía gasta pueden no ser el mismo.</p>
+    </div>
+    <div class="revela d2">
+      <svg id="cuesta" viewBox="0 0 640 380" role="img"
+           aria-label="Ilustración: un carro sube una cuesta gastando batería y la baja recuperando una parte">
+        <defs>
+          <linearGradient id="gradSuelo" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0" stop-color="#16273b"/><stop offset="1" stop-color="#0b1522" stop-opacity="0"/>
+          </linearGradient>
+        </defs>
+        <path class="suelo" d="M10 318 L130 318 C200 318 230 140 330 120 C390 108 410 108 440 128 C500 170 520 300 600 306 L630 306 L630 380 L10 380 Z"/>
+        <path class="via" id="via" d="M10 318 L130 318 C200 318 230 140 330 120 C390 108 410 108 440 128 C500 170 520 300 600 306 L630 306"/>
+        <path class="tramo" id="tSube" stroke="var(--brasa)" d="M130 318 C200 318 230 140 330 120"/>
+        <path class="tramo" id="tBaja" stroke="var(--cian)" d="M440 128 C500 170 520 300 600 306"/>
+        <text x="196" y="222" id="lSube" opacity="0" text-anchor="end">subir gasta batería</text>
+        <text x="512" y="196" id="lBaja" opacity="0">bajar devuelve una parte</text>
+        <g transform="translate(470 30)">
+          <text class="rot" x="0" y="-8">batería</text>
+          <rect x="0" y="0" width="130" height="26" rx="5" fill="none" stroke="var(--linea2)" stroke-width="1.5"/>
+          <rect x="131.5" y="8" width="5" height="10" rx="1.5" fill="var(--linea2)"/>
+          <rect id="carga" x="3" y="3" width="100" height="20" rx="3" fill="var(--cian)"/>
+        </g>
+        <g id="carro">
+          <rect x="-17" y="-15" width="34" height="11" rx="5" fill="var(--tinta)"/>
+          <rect x="-9" y="-21" width="17" height="8" rx="3.5" fill="var(--tinta)"/>
+          <circle cx="-9" cy="-3" r="3.6" fill="var(--noche)" stroke="var(--tinta)" stroke-width="1.8"/>
+          <circle cx="9" cy="-3" r="3.6" fill="var(--noche)" stroke="var(--tinta)" stroke-width="1.8"/>
+        </g>
+        <text class="rot" x="10" y="372">Ilustración, no es un cálculo.</text>
+      </svg>
+    </div>
+  </div>
+</section>
+
+<!-- ═════════════════════════════════════════════════════════ el problema -->
+<section class="escena" id="problema" data-nombre="El problema">
+  <div class="ancho">
+    <p class="fase revela">La problemática</p>
+    <h2 class="titulo revela d1" style="max-width:21ch">Optimizar la distancia no es optimizar la batería</h2>
+    <div class="tres revela d2">
+      <div>
+        <h3>Por qué</h3>
+        <p>El ruteo convencional optimiza distancia o tiempo, pero el consumo de un eléctrico
+          depende del perfil de pendiente. En los compactos pesa más: batería pequeña, menos margen
+          ante un desvío y un motor de potencia limitada para subir.</p>
+        <p class="nota">Y no existe telemetría abierta de carros eléctricos en ciudades andinas de
+          alta pendiente.</p>
+      </div>
+      <div>
+        <h3>Cómo</h3>
+        <p>Un grafo dirigido de las calles, con la pendiente de cada tramo sacada de modelos
+          digitales de terreno LiDAR; un modelo físico de consumo; un inventario de estaciones
+          cruzado entre dos fuentes; y la comparación de la ruta corta con la de mínimo consumo.</p>
+        <p class="nota">Sólo datos abiertos, y cada número recalculado por un segundo camino.</p>
+      </div>
+      <div>
+        <h3>Para qué</h3>
+        <p>Para saber dónde y cuánto cambia la ruta óptima, qué parte de la ciudad se alcanza con
+          la carga que existe hoy, y dejar un inventario de estaciones y un proceso que cualquiera
+          puede repetir y publicar.</p>
+        <p class="nota">El trabajo usa la red de carga existente como restricción; no la optimiza.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ═════════════════════════════════════════════════════════ dos ciudades -->
+<section class="escena" id="ciudades" data-nombre="Dos ciudades">
+  <div class="par par-mapa" style="grid-template-columns:minmax(0,.62fr) minmax(0,1.38fr)">
+    <div>
+      <h2 class="titulo revela">Dos ciudades, dos relieves</h2>
+      <p class="entrada revela d1">Bogotá es una sabana casi plana con un borde oriental abrupto
+        sobre los cerros. Medellín es un valle estrecho con laderas a los dos costados.</p>
+      <div class="dos-cifras revela d2" id="cifrasCiudades"></div>
+      <div class="revela d3" style="margin-top:1.4rem">
+        <div class="escalera" id="rampaAltura"></div>
+        <div class="escalera-pie" id="pieAltura"></div>
+        <p class="nota" style="margin-top:.7rem" id="notaAltura"></p>
+      </div>
+    </div>
+    <div class="lienzo-caja revela d1">
+      <canvas id="cvCiudades" aria-label="Las calles de Bogotá y de Medellín, a la misma escala, coloreadas por altura"></canvas>
+      <div class="cargando-lienzo">cargando las dos redes…</div>
+    </div>
+  </div>
+</section>
+
+<!-- ═════════════════════════════════════════════════════════ la pregunta -->
+<section class="escena" id="pregunta" data-nombre="La pregunta">
+  <div class="preguntas">
+    <p class="fase revela">La pregunta de investigación</p>
+    <h2 class="revela d1">¿En qué medida la topografía cambia la ruta óptima de un carro eléctrico
+      compacto?</h2>
+    <h2 class="revela d2">¿Y qué parte de la red vial es realmente alcanzable con las estaciones de
+      carga que se pueden verificar?</h2>
+    <div class="porque revela d3">
+      <div><b>Por qué compacto</b>Baterías chicas: un desvío mal calculado los deja sin margen.</div>
+      <div><b>Por qué estas dos ciudades</b>Las dos tienen modelos de terreno LiDAR de resolución
+        submétrica o métrica, y relieves contrastantes.</div>
+      <div><b>Con una regla</b>Sólo datos abiertos, que cualquiera pueda descargar y verificar.</div>
+    </div>
+  </div>
+</section>
+
+<!-- ═════════════════════════════════════════════════════════ objetivos -->
+<section class="escena" id="objetivos" data-nombre="Objetivos">
+  <div class="par" style="grid-template-columns:minmax(0,.78fr) minmax(0,1.22fr); align-items:center">
+    <div>
+      <p class="fase revela">Objetivo general</p>
+      <p class="general revela d1">Caracterizar el efecto de la topografía urbana sobre el consumo
+        energético y el ruteo de vehículos eléctricos compactos en Bogotá y Medellín, empleando
+        exclusivamente fuentes de datos abiertas, y estimar la alcanzabilidad de la red vial dada
+        la infraestructura de carga efectivamente verificable.</p>
+      <p class="nota revela d2">Tal como quedó escrito en el anteproyecto.</p>
+    </div>
+    <div class="revela d2">
+      <p class="nota" style="margin-bottom:.6rem">Objetivos específicos</p>
+      <ol class="objs" id="objs"></ol>
+    </div>
+  </div>
+</section>
+
+<!-- ═════════════════════════════════════════════════════════ el camino -->
+<section class="escena" id="camino" data-nombre="Las fases">
+  <div class="ancho" style="align-self:center">
+    <p class="fase revela">Cómo se responde</p>
+    <h2 class="titulo revela d1" style="max-width:20ch">Seis fases, una detrás de otra</h2>
+    <p class="entrada revela d2" style="max-width:60ch">Las fases 2 y 3 son las dos mitades que
+      necesita la 4: una dice cómo es el terreno; la otra, cómo responde el carro a ese terreno.
+      La sexta repite todo en Medellín sin cambiar el método ni los parámetros.</p>
+    <div class="fases revela d3" id="fases">
+      <div class="hilo" aria-hidden="true"></div>
+      <div class="f"><i>1</i><b>Inventario de estaciones de carga</b><span>Saber dónde se puede cargar de verdad.</span><em>Objetivo 4</em></div>
+      <div class="f"><i>2</i><b>Mapa de calles con su pendiente</b><span>Cuánto sube o baja cada tramo, y con qué error.</span><em>Objetivos 1 y 3</em></div>
+      <div class="f"><i>3</i><b>Modelo de consumo del vehículo</b><span>Cuánta batería gasta el carro en un tramo.</span><em>Objetivo 2</em></div>
+      <div class="f"><i>4</i><b>Comparación de rutas</b><span>La más corta contra la de menor consumo.</span><em>Objetivo 5</em></div>
+      <div class="f"><i>5</i><b>Alcanzabilidad</b><span>Desde qué esquinas se llega a cargar, y se vuelve.</span><em>Objetivo 5</em></div>
+      <div class="f"><i>6</i><b>Contraste entre ciudades</b><span>El mismo método en Medellín. Va con cada fase: usa el botón de ciudad.</span><em>Objetivo general</em></div>
+    </div>
+  </div>
+</section>
+
+<!-- ═════════════════════════════════════════════════════════ fase 1 -->
+<section class="escena" id="fase1" data-nombre="Fase 1 · Estaciones">
+  <div class="par">
+    <div>
+      <p class="fase revela">Fase 1 de 6 · Inventario de estaciones de carga</p>
+      <h2 class="titulo revela d1">¿Dónde se puede cargar de verdad?</h2>
+      <div class="ciudad revela d1" data-ciudad></div>
+      <div class="grande revela d2"><span class="cifra" id="nConfirmadas">—</span><span id="deTotal">de —</span></div>
+      <p class="entrada revela d2" style="margin-top:.4rem" id="textoConfirmadas"></p>
+      <div class="regla revela d3"><b>Por qué no Google Maps</b>
+        <span class="nota" style="color:var(--tinta2)">Sus términos prohíben guardar y volver a
+        publicar el contenido. Un resultado que no se puede mostrar no se puede publicar, así
+        que se usaron OpenStreetMap y OpenChargeMap.</span></div>
+      <p class="deja revela d4" id="deja1"></p>
+    </div>
+    <div class="revela d1">
+      <svg id="venn" viewBox="0 0 660 430" role="img"
+           aria-label="Estaciones según la fuente que las registra"></svg>
+      <div class="leyenda" id="leyVenn"></div>
+    </div>
+  </div>
+</section>
+
+<!-- ═════════════════════════════════════════════════════════ fase 2 -->
+<section class="escena" id="fase2" data-nombre="Fase 2 · Pendiente">
+  <div class="par par-mapa">
+    <div>
+      <p class="fase revela">Fase 2 de 6 · Mapa de calles con su pendiente</p>
+      <h2 class="titulo revela d1">Cada calle, con su inclinación</h2>
+      <div class="ciudad revela d1" data-ciudad></div>
+      <p class="entrada revela d2" id="entradaPend"></p>
+      <div class="cuentas revela d3" id="cuentas2"></div>
+      <div class="revela d3">
+        <div class="escalera" id="rampaPend"></div>
+        <div class="escalera-pie" id="piePend"></div>
+        <p class="nota" style="margin-top:.8rem" id="notaReparto"></p>
+      </div>
+    </div>
+    <div class="lienzo-caja revela d1">
+      <canvas id="cvPend" aria-label="Las calles coloreadas por pendiente"></canvas>
+      <div class="cargando-lienzo">cargando la red de calles…</div>
+    </div>
+  </div>
+</section>
+
+<!-- ═════════════════════════════════════════════════════════ confiabilidad -->
+<section class="escena" id="confianza" data-nombre="Fase 2 · Confiabilidad">
+  <div class="par" style="grid-template-columns:minmax(0,.8fr) minmax(0,1.2fr)">
+    <div>
+      <p class="fase revela">Fase 2 de 6 · Qué tan confiable es la pendiente</p>
+      <h2 class="titulo revela d1" style="max-width:14ch">El error del terreno, medido y no supuesto</h2>
+      <div class="grande revela d2"><span class="cifra">0,536</span><span>metros</span></div>
+      <p class="entrada revela d2" style="margin-top:.3rem">es el error vertical del modelo de
+        terreno de Bogotá, medido contra 496 vértices de la Red de Control Vertical del IGAC
+        (de 591 en la ciudad; 8 excluidos con evidencia en el propio vértice, criterio ASPRS).</p>
+      <p class="nota revela d3" id="notaSigma"></p>
+    </div>
+    <div class="revela d2">
+      <div class="cadena" id="cadena"></div>
+    </div>
+  </div>
+</section>
+
+<!-- ═════════════════════════════════════════════════════════ los extremos -->
+<section class="escena" id="extremos" data-nombre="Fase 2 · Tramos extremos">
+  <div class="par" style="grid-template-columns:minmax(0,1fr) minmax(0,1fr)">
+    <div>
+      <p class="fase revela">Fase 2 de 6 · Los tramos de más de 35 %</p>
+      <h2 class="titulo revela d1" style="max-width:17ch">Lo que dice el mapa, contra lo que se ve en la calle</h2>
+      <p class="entrada revela d2">El 35 % es una cota de plausibilidad, no un detector de errores:
+        la calle más empinada registrada tiene 34,8 %. Los tramos que la pasan se revisaron uno
+        por uno en Street View.</p>
+      <div class="revela d3" id="apiladas"></div>
+      <p class="nota revela d3" id="notaApiladas"></p>
+    </div>
+    <div class="revela d2">
+      <p class="nota" style="margin-bottom:.5rem">Rutas de mínimo consumo que pasan por un tramo de
+        más de 35 %, según el castigo k que se les pone al rutear</p>
+      <svg id="gK" viewBox="0 0 600 360" role="img" aria-label="Porcentaje de rutas con un tramo extremo según k, en las dos ciudades"></svg>
+      <p class="nota" id="notaK"></p>
+    </div>
+  </div>
+</section>
+
+<!-- ═════════════════════════════════════════════════════════ fase 3 -->
+<section class="escena" id="fase3" data-nombre="Fase 3 · Los carros">
+  <div class="par" style="align-items:center">
+    <div>
+      <p class="fase revela">Fase 3 de 6 · Modelo de consumo</p>
+      <h2 class="titulo revela d1">Doce carros, una misma física</h2>
+      <p class="entrada revela d2">El modelo convierte pendiente en batería gastada: rozamiento,
+        resistencia del aire, gravedad y recuperación al frenar, más una capa que suma el gasto de
+        arrancar y frenar. Se usa sin modificar su código.</p>
+      <p class="nota revela d3">En Medellín corren los mismos doce carros con el mismo modelo; sólo
+        cambian la densidad del aire (la ciudad está a 1.495 m) y la velocidad por tipo de vía.</p>
+      <div class="regla revela d3"><b>Un límite que se declara</b>
+        <span class="nota" style="color:var(--tinta2)">Los únicos datos abiertos de consumo real
+        vienen de Ann Arbor, en Estados Unidos: terreno plano. Sirven para los parámetros básicos,
+        pero no permiten comprobar el modelo en pendientes del 8 al 15 %, que es justo lo que
+        interesa aquí.</span></div>
+    </div>
+    <div class="revela d2">
+      <div class="flota" id="flota"></div>
+      <p class="nota" style="margin-top:.9rem" id="notaFlota"></p>
+    </div>
+  </div>
+</section>
+
+<!-- ═════════════════════════════════════════════════════════ fase 4: dos rutas -->
+<section class="escena" id="rutas" data-nombre="Fase 4 · Dos rutas">
+  <div class="par par-mapa">
+    <div>
+      <p class="fase revela">Fase 4 de 6 · Comparación de rutas</p>
+      <h2 class="titulo revela d1">Dos rutas para el mismo viaje</h2>
+      <div class="ciudad revela d1" data-ciudad></div>
+      <p class="entrada revela d2">Mismo origen, mismo destino. Una minimiza metros; la otra,
+        kilovatios hora.</p>
+      <div class="lineas-clave revela d2">
+        <span><i style="background:var(--tinta2)"></i>la más corta</span>
+        <span><i style="background:var(--brasa)"></i>la que menos energía gasta</span>
+      </div>
+      <div class="datos revela d3" id="datosPar"></div>
+      <p class="contexto revela d3" id="contextoPar"></p>
+      <button class="boton revela d4" id="otroPar">Ver otro viaje</button>
+    </div>
+    <div class="lienzo-caja revela d1">
+      <canvas id="cvRutas" aria-label="Las dos rutas de un viaje sobre las calles"></canvas>
+      <div class="cargando-lienzo">calculando el viaje…</div>
+    </div>
+  </div>
+</section>
+
+<!-- ═════════════════════════════════════════════════════════ fase 4: resultado -->
+<section class="escena" id="resultado" data-nombre="Fase 4 · Resultado">
+  <div class="ancho" style="align-self:center">
+    <p class="fase revela">Fase 4 de 6 · Ruta corta contra ruta de mínimo consumo</p>
+    <h2 class="titulo revela d1" style="max-width:24ch">¿Cuántos viajes ahorran batería de verdad?</h2>
+    <div class="como-se-lee revela d2">
+      <p>Para cada viaje se calcularon dos rutas con el mismo origen y destino: <b>la más corta</b>
+        y <b>la que menos energía gasta</b>. Si la segunda ahorra más del 5 % de la energía, el viaje
+        cuenta. La barra dice cuántos viajes de cada 100 cumplen.</p>
+      <div class="clave"><span><i style="background:var(--bog)"></i>Bogotá</span>
+        <span><i style="background:var(--med)"></i>Medellín</span></div>
+    </div>
+    <div class="filas-res revela d2" id="filasRes"></div>
+    <div class="franja revela d4" id="franjaCiudad"></div>
+  </div>
+</section>
+
+<!-- ═════════════════════════════════════════════════════════ fase 4: los doce carros -->
+<section class="escena" id="carros12" data-nombre="Fase 4 · Doce carros">
+  <div class="par" style="grid-template-columns:minmax(0,.78fr) minmax(0,1.22fr)">
+    <div>
+      <p class="fase revela">Fase 4 de 6 · ¿Depende del carro?</p>
+      <h2 class="titulo revela d1" style="max-width:14ch">¿Y si el carro es otro?</h2>
+      <p class="entrada revela d2">Se repitió la comparación con los doce carros. Cada fila es un
+        carro; cada punto, una ciudad. Más a la derecha quiere decir más viajes que ahorran más del 5 %
+        de la energía.</p>
+      <div class="dos-cifras revela d3" id="cifrasCarros"></div>
+      <p class="nota revela d3" id="notaCarros" style="margin-top:1.2rem"></p>
+    </div>
+    <div class="revela d2">
+      <svg id="gCarros" viewBox="0 0 640 470" role="img" aria-label="Viajes que ahorran más del 5 % con cada carro, en Bogotá y en Medellín"></svg>
+    </div>
+  </div>
+</section>
+
+<!-- ═════════════════════════════════════════════════════════ fase 5: alcance -->
+<section class="escena" id="alcance" data-nombre="Fase 5 · Llegar a cargar">
+  <div class="par">
+    <div>
+      <p class="fase revela">Fase 5 de 6 · Alcanzabilidad</p>
+      <h2 class="titulo revela d1">¿Desde dónde se llega a cargar?</h2>
+      <div class="ciudad revela d1" data-ciudad></div>
+      <div class="grande revela d2"><span class="cifra" id="pctAlcance">—</span></div>
+      <p class="entrada revela d2" style="margin-top:.4rem" id="textoAlcance"></p>
+    </div>
+    <div class="revela d2">
+      <p class="nota" style="margin-bottom:1rem" id="tituloBarras"></p>
+      <div class="barras" id="barrasAlcance"></div>
+      <p class="nota" style="margin-top:1rem" id="pieBarras"></p>
+    </div>
+  </div>
+</section>
+
+
+<!-- ═════════════════════════════════════════════════════════ fase 5: trayecto completo -->
+<section class="escena" id="trayecto" data-nombre="Fase 5 · Ir y volver">
+  <div class="par" style="grid-template-columns:minmax(0,.8fr) minmax(0,1.2fr)">
+    <div>
+      <p class="fase revela">Fase 5 de 6 · El viaje completo</p>
+      <h2 class="titulo revela d1" style="max-width:13ch">Ir, llegar y volver con la misma carga</h2>
+      <p class="entrada revela d2">Para cada viaje de la muestra: salir, llegar al destino y
+        regresar al origen, sin bajar nunca del 10 % de reserva. ¿Con cuánta batería hay que salir?</p>
+      <div class="dos-cifras revela d3" id="cifrasTrayecto"></div>
+    </div>
+    <div class="revela d2">
+      <p class="nota" style="margin-bottom:.4rem">Viajes que logran ir y volver, según la batería con
+        que se sale (BYD Dolphin, mediodía, ruta de mínimo consumo)</p>
+      <svg id="gTrayecto" viewBox="0 0 620 380" role="img" aria-label="Viajes que logran ir y volver según la batería inicial, Bogotá y Medellín"></svg>
+    </div>
+  </div>
+</section>
+
+<!-- ═════════════════════════════════════════════════════════ lo que deja -->
+<section class="escena" id="aportes" data-nombre="Lo que deja">
+  <div class="ancho" style="align-self:center">
+    <p class="fase revela">Lo que queda después de la tesis</p>
+    <h2 class="titulo revela d1" style="max-width:22ch">Lo que deja el trabajo para Bogotá y Medellín</h2>
+    <div class="aportes revela d2" id="aportesLista"></div>
+    <div class="comprobado revela d3">
+      <p>Cada número de esta presentación se recalculó por un segundo camino antes de mostrarse.</p>
+      <div><b id="pg2">—</b><span>comprobaciones del empaquetado de datos</span></div>
+      <div><b id="pg1">—</b><span>viajes de D4 que el navegador vuelve a resolver al abrir la página</span></div>
+      <div><b id="pg4">—</b><span>cifras copiadas de los cuadernos que coinciden con los datos</span></div>
+    </div>
+  </div>
+</section>
+
+<!-- ═════════════════════════════════════════════════════════ limitaciones -->
+<section class="escena" id="limitaciones" data-nombre="Limitaciones">
+  <div class="ancho" style="align-self:center">
+    <p class="fase revela">Lo que el trabajo no puede afirmar</p>
+    <h2 class="titulo revela d1" style="max-width:24ch">Limitaciones declaradas</h2>
+    <div class="limites revela d2" id="limites"></div>
+  </div>
+</section>
+
+<!-- ═════════════════════════════════════════════════════════ hallazgos -->
+<section class="escena" id="hallazgos" data-nombre="Hallazgos">
+  <div class="ancho" style="align-self:center">
+    <p class="fase revela">La respuesta a la pregunta</p>
+    <h2 class="titulo revela d1" style="max-width:22ch">Hallazgos importantes</h2>
+    <div class="hallazgos revela d2" id="hallazgosLista"></div>
+  </div>
+</section>
+
+<!-- ═════════════════════════════════════════════════════════ métricas -->
+<section class="escena" id="metricas" data-nombre="Métricas">
+  <div class="ancho" style="align-self:center">
+    <div class="cabeza-ciudad">
+      <div>
+        <p class="fase revela">Las dos ciudades, cifra por cifra</p>
+        <h2 class="titulo revela d1" style="max-width:22ch">Métricas del trabajo</h2>
+      </div>
+      <button class="boton lleno revela d3" id="irFinal">Ver el mapa de las dos ciudades</button>
+    </div>
+    <div class="ficha revela d2" id="ficha"></div>
+  </div>
+</section>
+
+<!-- ═════════════════════════════════════════════════════════ final -->
+<section class="escena" id="final" data-nombre="El mapa">
+  <div id="mapaFinal"></div>
+  <aside class="tablero" aria-label="Planear un viaje">
+    <header>
+      <h2>Planea un viaje</h2>
+      <p>Las dos redes, sus estaciones y los doce carros. Elige uno y marca dos puntos en la misma ciudad; aleja el mapa para pasar a la otra.</p>
+    </header>
+    <div class="cuerpo">
+      <div class="paso">
+        <h3><em>1</em>El carro</h3>
+        <div class="carros" id="carros"></div>
+      </div>
+      <div class="paso">
+        <h3><em>2</em>Batería al salir</h3>
+        <div class="deslizador"><input type="range" id="bateria" min="10" max="100" step="5" value="80"
+          aria-label="Batería al salir"><b id="bateriaTxt">80 %</b></div>
+      </div>
+      <div class="paso">
+        <h3><em>3</em>El viaje</h3>
+        <div class="puntos">
+          <button class="punto-btn espera" id="btnA"><b>Salida</b>toca el mapa</button>
+          <button class="punto-btn" id="btnB"><b>Llegada</b>después</button>
+        </div>
+        <div class="acciones">
+          <button class="boton lleno" id="calcular" disabled>Calcular rutas</button>
+          <button class="boton chico" id="limpiar">Limpiar</button>
+        </div>
+      </div>
+      <div class="paso" id="resultadoFinal" hidden>
+        <h3><em>4</em>Resultado</h3>
+        <div class="comparar" id="comparar"></div>
+        <p class="veredicto" id="veredicto"></p>
+        <div class="pila-grande" id="pilaFinal"><i id="pilaQueda" style="background:var(--cian)"></i><i class="gasto" id="pilaGasto"></i></div>
+        <div class="pila-pie"><span id="pilaSale"></span><span id="pilaLlega"></span></div>
+        <canvas id="perfilFinal" aria-label="Perfil de altura de la ruta eficiente"></canvas>
+        <div class="pila-pie"><span>salida</span><span id="perfilPieFinal"></span><span>llegada</span></div>
+        <div class="acciones"><button class="boton" id="repetir">Ver el recorrido otra vez</button></div>
+      </div>
+    </div>
+  </aside>
+  <div class="capas">
+    <button id="irBog" aria-pressed="false">Bogotá</button>
+    <button id="irMed" aria-pressed="false">Medellín</button>
+    <button id="capaPend" aria-pressed="true">Pendiente</button>
+    <button id="capaEst" aria-pressed="true">Estaciones</button>
+  </div>
+  <div class="leyenda-mapa">
+    <div style="margin-bottom:.4rem; color:var(--tinta2)">Pendiente de la calle</div>
+    <div class="escalera" id="rampaMapa"></div>
+    <div class="escalera-pie"><span>0 %</span><span>8 %</span><span>22 % o más</span></div>
+    <div style="display:flex; align-items:center; gap:.5rem; margin-top:.55rem">
+      <i style="width:9px;height:9px;border-radius:50%;border:2px solid var(--tinta);background:var(--noche)"></i>
+      estación de carga</div>
+    <div id="leyLimite" style="display:flex; align-items:center; gap:.5rem; margin-top:.4rem">
+      <i style="width:18px;height:0;border-top:2px dashed #dfe7ef"></i>
+      límite municipal (IGAC)</div>
+  </div>
+</section>
+
+<script type="module">
+import * as G from "./bogota.js?v=2026-11-17-dos-ciudades";
+// Si el navegador o la carpeta tienen todavía el bogota.js anterior, se avisa en vez de fallar en silencio.
+if (typeof G.usar !== "function") {
+  const aviso = document.createElement("div");
+  aviso.style.cssText = "position:fixed;inset:auto 1rem 1rem 1rem;z-index:99;padding:1rem 1.2rem;border-radius:8px;background:#3a1a10;color:#ffd9c9;font:500 15px Inter Tight,sans-serif;border:1px solid #ff7a45";
+  aviso.textContent = "Esta página necesita el bogota.js nuevo. Copia el bogota.js que va con esta versión en la misma carpeta y recarga con Ctrl + Shift + R.";
+  document.body.appendChild(aviso);
+}
+const usarBogota = () => { if (typeof G.usar === "function") G.usar("datos_bogota"); };
+const $ = s => document.querySelector(s);
+const nf = (x, d = 0) => (x == null || Number.isNaN(+x)) ? "—"
+  : (+x).toLocaleString("es-CO", { minimumFractionDigits: d, maximumFractionDigits: d });
+const CSS = v => getComputedStyle(document.documentElement).getPropertyValue(v).trim();
+const QUIETO = matchMedia("(prefers-reduced-motion: reduce)").matches;
+const svgNS = "http://www.w3.org/2000/svg";
+function el(p, t, a = {}, txt) {
+  const n = document.createElementNS(svgNS, t);
+  for (const k in a) n.setAttribute(k, a[k]);
+  if (txt != null) n.textContent = txt;
+  p.appendChild(n); return n;
+}
+function sugerir(ev, html) {
+  const s = $("#sug"); s.innerHTML = html; s.classList.add("vivo");
+  s.style.left = Math.min(ev.clientX + 16, innerWidth - 300) + "px";
+  s.style.top = (ev.clientY + 16) + "px";
+}
+const ocultar = () => $("#sug").classList.remove("vivo");
+
+// ───────────────────────────────────────────────── escenas e índice
+const escenas = [...document.querySelectorAll(".escena")];
+const entradas = {};                    // id → función que anima al entrar
+$("#indice").innerHTML = escenas.map((s, i) =>
+  `<button data-i="${i}" aria-label="${s.dataset.nombre}"><span>${s.dataset.nombre}</span><i></i></button>`).join("");
+$("#indice").addEventListener("click", e => {
+  const b = e.target.closest("button"); if (b) escenas[+b.dataset.i].scrollIntoView();
+});
+let actual = 0;
+/* Una escena está activa cuando ocupa más de la mitad de la pantalla. Se activa
+   cada vez que se entra, también al volver: así nunca queda una escena apagada
+   después de subir y bajar, que fue el fallo del mapa vacío. */
+const vigia = new IntersectionObserver(es => {
+  for (const e of es) {
+    if (!e.isIntersecting || e.intersectionRatio < .55) continue;
+    const i = escenas.indexOf(e.target);
+    actual = i;
+    escenas.forEach(s => s.classList.toggle("activa", s === e.target));
+    $("#indice").querySelectorAll("button").forEach((b, j) =>
+      b.setAttribute("aria-current", j === i ? "true" : "false"));
+    document.body.classList.toggle("en-portada", e.target.id === "portada");
+    document.body.classList.toggle("en-final", e.target.id === "final");
+    // el nombre de la escena se muestra un instante y se retira, para no tapar datos
+    const ind = $("#indice"); ind.classList.add("aviso");
+    clearTimeout(ind._t); ind._t = setTimeout(() => ind.classList.remove("aviso"), 1700);
+    entradas[e.target.id]?.();
+  }
+}, { threshold: [.55] });
+escenas.forEach(s => vigia.observe(s));
+
+/* Red de seguridad: si el contenido de una escena no cabe en la ventana, se encoge
+   hasta caber. El tamaño base ya depende del alto; esto cubre las ventanas extremas. */
+function encajar() {
+  for (const s of escenas) {
+    if (s.id === "final") continue;
+    const hijos = [...s.children].filter(n => !n.classList.contains("baja"));
+    hijos.forEach(n => n.style.zoom = "");
+    for (let paso = 0; paso < 4 && s.scrollHeight > s.clientHeight + 1; paso++) {
+      const z = (parseFloat(hijos[0].style.zoom) || 1) * Math.max(.6, (s.clientHeight / s.scrollHeight) * .985);
+      hijos.forEach(n => n.style.zoom = z);
+    }
+  }
+}
+addEventListener("resize", () => { clearTimeout(encajar._t); encajar._t = setTimeout(encajar, 120); });
+document.fonts.ready.then(() => setTimeout(encajar, 60));
+
+// Teclado de presentador: flechas, avance de página y espacio.
+addEventListener("keydown", e => {
+  if (e.target.closest("input,select,textarea")) return;
+  const sig = ["ArrowDown", "PageDown", " "].includes(e.key);
+  const ant = ["ArrowUp", "PageUp"].includes(e.key);
+  if (!sig && !ant) return;
+  if (escenas[actual]?.id === "final" && !["PageUp", "PageDown"].includes(e.key)) return;
+  e.preventDefault();
+  const j = Math.max(0, Math.min(escenas.length - 1, actual + (sig ? 1 : -1)));
+  escenas[j].scrollIntoView();
+});
+
+// ───────────────────────────────────────────────── datos
+const M = await fetch("datos_bogota/meta.json", { cache: "no-cache" }).then(r => r.json());
+const EST = await fetch("datos_bogota/estaciones.json", { cache: "no-cache" }).then(r => r.json());
+
+
+// ═════════════════════════════════════════════════ la red: carga en segundo plano
+/* Las escenas de texto ya están listas; la red (87.752 esquinas, 123.000 calles)
+   se carga detrás y cada escena con mapa se dibuja cuando llega. */
+const RAMPA_P = ["#17283d", "#1c4460", "#23637f", "#2c879f", "#45aebd", "#7fd6e0", "#d7f7fb"];
+const CORTES = [0, 1.5, 3, 5, 8, 14, 22];
+const RAMPA_Z = ["#17222f", "#25354a", "#384b63", "#526781", "#7489a2", "#a3b4c7", "#e3eaf2"];
+let RED = null;
+const pendientes = [];
+const alListo = f => RED ? f() : pendientes.push(f);
+
+(async () => {
+  try {
+    await G.cargar(() => {});
+    await G.cargarCarro(M.vehiculo_base);
+  } catch (e) {
+    document.querySelectorAll(".cargando-lienzo").forEach(n =>
+      n.textContent = "No pude leer datos_bogota: " + e.message);
+    return;
+  }
+  const D = G.D, NG = M.n_dibujo;
+  // altura de cada calle: el promedio de sus dos esquinas
+  const zd = new Float32Array(NG).fill(NaN);
+  for (let e = 0; e < M.n_aristas; e++) {
+    const g = D.gi[e];
+    if (Number.isNaN(zd[g])) zd[g] = (D.z[D.u[e]] + D.z[D.v[e]]) / 2;
+  }
+  let z0 = Infinity, z1 = -Infinity;
+  for (let i = 0; i < D.z.length; i++) { const z = D.z[i]; if (z < z0) z0 = z; if (z > z1) z1 = z; }
+  // Altura por cuantiles: cada tono reúne la misma cantidad de calles. Con una escala
+  // pareja, unos pocos caminos muy altos dejaban casi toda la ciudad en el tono más oscuro.
+  const orden = Float32Array.from(zd).sort();
+  const zq = [1, 2, 3, 4, 5, 6].map(k => orden[Math.floor(NG * k / 7)]);
+  const cubP = new Uint8Array(NG), cubZ = new Uint8Array(NG);
+  for (let g = 0; g < NG; g++) {
+    const p = D.pendAbs[g]; let k = CORTES.length - 1;
+    while (k > 0 && p < CORTES[k]) k--;
+    cubP[g] = k;
+    let q = 0; while (q < 6 && zd[g] >= zq[q]) q++;
+    cubZ[g] = q;
+  }
+  // Encuadre: del 1 % al 99 % de las esquinas, más un margen. Las colas rurales largas
+  // siguen dibujadas, pero ya no encogen la ciudad dentro del cuadro.
+  const pct = (arr, f) => Float32Array.from(arr).sort()[Math.floor(arr.length * f)];
+  const a = pct(D.lon, .01), c = pct(D.lon, .99), b = pct(D.lat, .01), d = pct(D.lat, .99);
+  const mx = (c - a) * .06, my = (d - b) * .06;
+  RED = { zd, cubP, cubZ, zq, caja: [a - mx, b - my, c + mx, d + my], z0, z1 };
+  document.querySelectorAll(".cargando-lienzo").forEach(n => n.classList.add("ido"));
+  pendientes.splice(0).forEach(f => f());
+  // si la escena visible tiene mapa, se dibuja ya
+  entradas[escenas[actual]?.id]?.();
+})();
+
+// ─────────────────────────────── utilidades de dibujo
+const DPR = () => Math.min(2, devicePixelRatio || 1);
+function lienzo(c) {
+  const r = DPR(), W = c.clientWidth, H = c.clientHeight;
+  c.width = Math.round(W * r); c.height = Math.round(H * r);
+  const g = c.getContext("2d"); g.setTransform(r, 0, 0, r, 0, 0); g.clearRect(0, 0, W, H);
+  return { g, W, H };
+}
+function aparte(W, H) {
+  const r = DPR(), o = document.createElement("canvas");
+  o.width = Math.round(W * r); o.height = Math.round(H * r);
+  const g = o.getContext("2d"); g.setTransform(r, 0, 0, r, 0, 0);
+  return { o, g };
+}
+// lon/lat → pixeles, conservando la proporción real (coseno de la latitud)
+function proyector([x0, y0, x1, y1], W, H, pad) {
+  const cl = Math.cos((y0 + y1) / 2 * Math.PI / 180);
+  const s = Math.min((W - 2 * pad) / ((x1 - x0) * cl), (H - 2 * pad) / (y1 - y0));
+  const ox = (W - (x1 - x0) * cl * s) / 2, oy = (H - (y1 - y0) * s) / 2;
+  return { X: x => ox + (x - x0) * cl * s, Y: y => H - oy - (y - y0) * s, s };
+}
+// todas las calles de un mismo color en un solo trazo: así 123.000 líneas salen al instante
+function trazar(g, P, cub, colores, ancho, dentro) {
+  const D = G.D, NG = D.meta.n_dibujo;      // la ciudad en uso: Bogotá o Medellín
+  for (let k = 0; k < colores.length; k++) {
+    g.beginPath(); let n = 0;
+    for (let q = 0; q < NG; q++) {
+      if (cub[q] !== k || (dentro && !dentro(q))) continue;
+      const a = D.off[q], b = D.off[q + 1];
+      g.moveTo(P.X(D.xy[2 * a]), P.Y(D.xy[2 * a + 1]));
+      for (let i = a + 1; i < b; i++) g.lineTo(P.X(D.xy[2 * i]), P.Y(D.xy[2 * i + 1]));
+      n++;
+    }
+    if (!n) continue;
+    g.strokeStyle = colores[k]; g.lineWidth = ancho(k); g.stroke();
+  }
+}
+// barrido de occidente a oriente: la ciudad aparece en el orden en que se inclina
+function revelar(c, o, dur = 2000) {
+  const { g, W, H } = lienzo(c);
+  if (QUIETO) { g.drawImage(o, 0, 0, W, H); return; }
+  const t0 = performance.now();
+  (function cuadro(t) {
+    const k = Math.min(1, (t - t0) / dur), x = W * (1 - Math.pow(1 - k, 3));
+    g.clearRect(0, 0, W, H);
+    g.save(); g.beginPath(); g.rect(0, 0, x, H); g.clip(); g.drawImage(o, 0, 0, W, H); g.restore();
+    if (k < 1) requestAnimationFrame(cuadro);
+  })(t0);
+}
+function contar(nodo, hasta, dec = 0, dur = 1400) {
+  if (QUIETO) { nodo.textContent = nf(hasta, dec); return; }
+  const t0 = performance.now();
+  (function f(t) {
+    const k = Math.min(1, (t - t0) / dur);
+    nodo.textContent = nf(hasta * (1 - Math.pow(1 - k, 3)), dec);
+    if (k < 1) requestAnimationFrame(f);
+  })(t0);
+}
+
+// ═════════════════════════════════════════════════ portada: el título baja como una ladera
+function perfilTitulo() {
+  const h = $("#tituloEscalon"), svg = $("#perfilTitulo");
+  const caja = h.getBoundingClientRect();
+  const lineas = [...h.querySelectorAll("span")];
+  svg.setAttribute("viewBox", `0 0 ${caja.width} ${caja.height}`);
+  svg.setAttribute("width", caja.width); svg.setAttribute("height", caja.height);
+  svg.innerHTML = "";
+  if (innerWidth < 900) return;
+  // Un trazo que toca el pie de cada renglón: el bloque de texto es la ladera.
+  const pts = lineas.map(l => {
+    const r = l.getBoundingClientRect();
+    const izq = r.left - caja.left + parseFloat(getComputedStyle(l).paddingLeft);
+    return [izq - 16, r.bottom - caja.top + 4];
+  });
+  // la cola final baja por debajo del ultimo renglon, sin cortar sus letras
+  const ult = pts[pts.length - 1];
+  const d = "M" + pts.map(p => p.join(" ")).join(" L") +
+    ` L ${caja.width + 40} ${ult[1] + 30}`;
+  const p = el(svg, "path", { d, fill: "none", stroke: CSS("--brasa"), "stroke-width": 1.5,
+    "stroke-linejoin": "round", opacity: .85 });
+  const L = p.getTotalLength();
+  p.style.strokeDasharray = L; p.style.strokeDashoffset = QUIETO ? 0 : L;
+  if (!QUIETO) requestAnimationFrame(() => {
+    p.style.transition = "stroke-dashoffset 2.4s cubic-bezier(.4,.1,.2,1) .5s";
+    p.style.strokeDashoffset = 0;
+  });
+}
+document.fonts.ready.then(perfilTitulo);
+addEventListener("resize", perfilTitulo);
+
+// ═════════════════════════════════════════════════ la idea: la cuesta animada
+{
+  const via = $("#via"), carro = $("#carro"), carga = $("#carga");
+  const sube = $("#tSube"), baja = $("#tBaja");
+  const L = via.getTotalLength();
+  // Dónde empieza y termina cada tramo sobre el recorrido completo.
+  const largoDe = d => { const p = document.createElementNS(svgNS, "path"); p.setAttribute("d", d);
+    return p.getTotalLength(); };
+  const aSube = 120, bSube = aSube + sube.getTotalLength();
+  const bBaja = L - 30, aBaja = bBaja - baja.getTotalLength();
+  for (const t of [sube, baja]) {
+    const l = t.getTotalLength(); t.style.strokeDasharray = l; t.style.strokeDashoffset = l;
+  }
+  // Nivel de la batería: baja en la subida, recupera una parte en la bajada.
+  const nivel = s => {
+    let n = 96 - s * .006;
+    if (s > aSube) n -= Math.min(s, bSube) - aSube > 0 ? (Math.min(s, bSube) - aSube) * .16 : 0;
+    if (s > aBaja) n += (Math.min(s, bBaja) - aBaja) * .055;
+    return Math.max(4, n);
+  };
+  let t0 = null, corriendo = false;
+  function cuadro(t) {
+    if (!t0) t0 = t;
+    const dur = 7600, pausa = 1800;
+    const k = Math.min(1, ((t - t0) % (dur + pausa)) / dur);
+    const s = k * L;
+    const p = via.getPointAtLength(s), q = via.getPointAtLength(Math.min(L, s + 1));
+    const ang = Math.atan2(q.y - p.y, q.x - p.x) * 180 / Math.PI;
+    carro.setAttribute("transform", `translate(${p.x} ${p.y}) rotate(${ang})`);
+    carga.setAttribute("width", nivel(s) * 1.24);
+    carga.setAttribute("fill", s > aSube && s < bSube ? CSS("--brasa") : CSS("--cian"));
+    const ls = sube.getTotalLength(), lb = baja.getTotalLength();
+    sube.style.strokeDashoffset = ls - Math.max(0, Math.min(ls, s - aSube));
+    baja.style.strokeDashoffset = lb - Math.max(0, Math.min(lb, s - aBaja));
+    $("#lSube").setAttribute("opacity", s > aSube + 40 ? 1 : 0);
+    $("#lBaja").setAttribute("opacity", s > aBaja + 40 ? 1 : 0);
+    if (corriendo) requestAnimationFrame(cuadro);
+  }
+  entradas.idea = () => {
+    if (QUIETO) { cuadro(performance.now() + 7600); return; }
+    if (!corriendo) { corriendo = true; t0 = null; requestAnimationFrame(cuadro); }
+  };
+  // Se detiene fuera de la pantalla para no gastar procesador.
+  new IntersectionObserver(es => es.forEach(e => { if (!e.isIntersecting) corriendo = false; }))
+    .observe($("#idea"));
+}
+
+// ═════════════════════════════════════════════════ cifras copiadas de los cuadernos
+/* Todo lo que la página no puede leer del paquete de datos sale de aquí, y cada
+   cifra dice de dónde se copió. Nada se calcula ni se completa: si un valor no está
+   en un cuaderno, no está en esta tabla. Las de Bogotá que también vienen en el
+   paquete se cotejan al abrir la página (escena "Cómo verificamos").
+   D4  = D4_grafo_ruteo.ipynb (Bogotá)      D4M = D4_ruteo_medellin.ipynb (Medellín) */
+const TESIS = {
+  bog: {
+    nombre: "Bogotá",
+    mdt: "MDT 2020 de la zona urbana, celdas de 50 cm (IDECA)",          // constantes_d1
+    sigma_z: 0.536, vertices: 496, vertices_ciudad: 591, excluidos: 8,     // D4, texto de la celda 0
+    err_pend_mediana: 1.21,                                                // D4, texto de la celda 8c
+    tramos: 225704, esquinas: 94795, tramos_red: 214837, esquinas_red: 87752, // D4 celdas 1 y 2b
+    sin_altura: { tramos: 1374, pct: 0.61, km: 383.8, pct_km: 4.41, usme: 25.5, cbolivar: 16.7 }, // D4 celda 2
+    coherentes: { exactas: 84315, de: 84571, pct: 99.7 },                  // D4 celda 2
+    estimacion: [                                                          // D4, texto de la celda 8b
+      { metodo: "Grafo: promedio de vecinas", err: 0.51, falsas: 12, usado: true },
+      { metodo: "8 más cercanas en el mapa", err: 0.62, falsas: 120 },
+      { metodo: "4 más cercanas", err: 0.63, falsas: 181 },
+      { metodo: "16 más cercanas", err: 0.63, falsas: 97 },
+      { metodo: "La más cercana", err: 0.76, falsas: 304 }],
+    borde: [1.25, 1.69],                                                   // D4, texto de la celda 8c
+    k_curva: [13.0, 9.4, 5.4, 4.2, 3.2, 2.8, 1.2, 1.0],                    // D4, texto de la celda 12
+    street: { revisadas: 50, calle: 14, normal: 8, abierta: 6, escalera: 0, sendero: 0, no_se_ve: 36 }, // D4 celda 13
+    franja_35_50: { calles_pct: 62, ic: [48, 74], escaleras: 4, de: 50 },  // D4, texto de la celda 12
+    viajes: 5250, excluidos: 177,                                          // D4 celda 15f
+    llegar: { mediana: 0.360, max_pct: 8.10 }, volver: { mediana: 0.588, max_pct: 15.95 }, // D4 celda 15b
+    volver_mas_pct: 73.0,
+    trayecto: [4.2, 25.5, 72.8, 95.1, 99.8], trayecto_mediana: 17.38,     // D4 celda 15e
+    fisica: { wh_m: 7.765, r2: 0.971, parejas: 877510 }, networkx_dif_wh: 0.010, // D4 celda 19
+    enganche: { mediana: 41.9, max: 165.8 },                               // D4 celda 14
+    eventos_mediana_dia: [0.556, 0.584],                                   // D4 celda 15d (E3, 7 a 17.5 h)
+    // cifras de Bogotá que también trae el paquete: se cotejan al abrir
+    cotejo: { k0_ladera_mas5: 46.4, k0_ciudad_mas5: 13.2, k0_baja: 3.51, k0_cambia: 74.5,
+              dolphin_peor_pct: 8.10, kwid_20_pesimista: 99.831 },
+  },
+  med: {
+    nombre: "Medellín",
+    mdt: "DTM-LiDAR 2021, celdas de 1 m (Catastro de Medellín)",          // constantes_d1
+    sigma_z: 0.539, sigma_ficha: 0.10,                                     // constantes_d1 (RAMAS_PENDIENTE_MED)
+    tramos: 39160, esquinas: 16396, tramos_red: 38826, esquinas_red: 16156, // D4M celdas 1 y 2
+    km_red: 2193.7, km_fisicos: 2232.4,                                    // D4M celdas 1 y 4
+    sin_altura: { tramos: 2, calles: 1, km: 4.76, nombre: "Antigua vía al mar" }, // D4M celda 2
+    esquinas_2calles: 14518, dispersion_max: 0.614,                        // D4M celda 2
+    extremas_red: 184,                                                     // D4M celda 4
+    k_curva: [1.8, 0.8, 0.2, 0.2, 0.2, 0.2, 0.2, 0.2],                     // D4M celda 11
+    street: { revisadas: 104, calle: 39, normal: 38, abierta: 1, escalera: 31, sendero: 12, no_se_ve: 22 }, // D4M celda 11b
+    sin_escaleras: { esquinas_sin_ruta: 11, cambio_max_pct: 0.051 },       // D4M celda 11b
+    viajes: 4200, excluidos: 328, z_corte_ladera_m: 1600.4,                // D4M celdas 5 y 20b
+    // ponderado a la ciudad, Dolphin, mediodía, red oficial, k = 0 (D4M celda 20b)
+    estratos: {
+      plano:   { viajes: 1387, cambia: 62.5, mediana: 0.41, p90: 8.83, mas5: 17.1, baja: 3.87 },
+      cruzado: { viajes: 1181, cambia: 86.4, mediana: 1.71, p90: 12.80, mas5: 25.1, baja: 3.83 },
+      ladera:  { viajes: 1304, cambia: 85.6, mediana: 1.86, p90: 7.83, mas5: 21.1, baja: 4.12 },
+      ciudad:  { viajes: 3872, cambia: 76.6, mediana: 1.19, p90: 9.97, mas5: 21.3, baja: 3.88 } },
+    mas5_k50: 21.2,                                                        // D4M celda 20b
+    consumo: { corta: 16.479, eficiente: 15.840 },                         // D4M, supuesto 1
+    // Alcanzabilidad, red oficial (D4M celda 13)
+    alcance: [
+      ["byd_dolphin_449", 44.90, 7.83, 100, 99.981], ["byd_seagull_dolphin_mini", 38.00, 7.75, 100, 99.981],
+      ["byd_tang_gs", 86.40, 6.36, 100, 100], ["byd_yuan_up", 45.10, 8.13, 100, 99.981],
+      ["chery_icar_03", 65.69, 6.42, 100, 100], ["chevrolet_spark_euv", 41.90, 7.77, 100, 99.981],
+      ["kia_ev5_light", 64.20, 6.66, 100, 100], ["kia_ev9_gtline", 96.00, 5.99, 100, 100],
+      ["mg4_electric_urban", 42.80, 7.88, 100, 99.981], ["renault_kwid_etech", 26.80, 9.64, 100, 99.969],
+      ["tesla_model_3_rwd", 60.00, 6.49, 100, 100], ["tesla_model_y_rwd", 60.00, 6.66, 100, 100]]
+      .map(([vehiculo, bateria_kwh, pct_bateria_max, alcanzable_20pct, alcanzable_20pct_pesimista]) =>
+        ({ vehiculo, bateria_kwh, pct_bateria_max, alcanzable_20pct, alcanzable_20pct_pesimista })),
+    llegar: { mediana: 0.080, max_kwh: 3.514, max_pct: 7.83 },             // D4M celda 13b
+    volver: { mediana: 0.650, max_kwh: 8.518, max_pct: 18.97 },
+    volver_mas_pct: 89.2,
+    por_altura: [                                                          // D4M celda 13b
+      ["1.400–1.500 m", 4382, 0.1623, 0.2237, 0.0685], ["1.500–1.600 m", 5615, 0.1090, 0.5306, 0.3929],
+      ["1.600–1.700 m", 2778, -0.0558, 1.2411, 1.2826], ["1.700–1.800 m", 1854, -0.2529, 1.7970, 2.0174],
+      ["1.800–1.900 m", 810, -0.3779, 2.4249, 2.7679], ["1.900–2.000 m", 347, -0.4035, 3.1713, 3.4674],
+      ["2.000–2.100 m", 132, -0.7371, 3.6082, 4.2950], ["2.100–2.200 m", 54, -0.8941, 4.0631, 4.9940],
+      ["2.200–2.300 m", 29, -1.0140, 4.8961, 5.8416], ["2.300–2.400 m", 24, -1.0766, 5.5080, 6.5569],
+      ["2.400–2.500 m", 70, -1.3525, 6.1358, 7.3153], ["2.500–2.600 m", 34, -1.0928, 6.9043, 7.9572],
+      ["2.600–2.700 m", 20, -1.7172, 6.9619, 8.5877], ["2.700–2.800 m", 7, -1.8316, 7.4547, 9.2863]]
+      .map(([nombre, esquinas, llegar, volver, dif]) => ({ nombre, esquinas, llegar, volver, dif })),
+    trayecto: [10.6, 52.5, 92.7, 98.0, 99.6], trayecto_mediana: 14.83,    // D4M celda 15e
+    fisica: { wh_m: 7.594, r2: 0.998, parejas: 161550 }, networkx_dif_wh: 0.006, // D4M celda 14
+    enganche: { mediana: 53.2, max: 209.1 },                               // D4M celda 12
+    // Inventario B2.1 de Medellín, sin el cargador de bicicletas (D4M celdas 3 y 12)
+    estaciones: [
+      ["ERCO - AUDI", "C1 Coincidencia confirmada"], ["Terpel Voltex El Encierro", "C2 Coincidencia probable"],
+      ...["Unicentro - Tesla Supercharger", "Calle 12 Sur", "Centro Comercial Los Molinos", "ERCO - Outlet de Moda",
+          "Terpel Voltex Autopista Norte", "Celsia Universidad EAFIT", "Centro Comercial del Este", "Oviedo Celsia"]
+        .map(n => [n, "C4 Sin contraparte (solo OCM)"]),
+      ...["Punto de carga Primax Nutibara", "Sin nombre en OpenStreetMap", "Estacion de gasolina",
+          "Punto de carga Voltex Autopista Norte", "Punto de carga Exposiciones EDS Colibrí",
+          "Punto de carga CDA Los Álamos", "Punto de carga Chevrolet Andar - Megataller",
+          "Punto de carga Universidad de Antioquia"].map(n => [n, "C4 Sin contraparte (solo OSM)"])]
+      .map(([n, cat]) => ({ n, cat })),
+  },
+  fisica_rango: [7.340, 9.635],                                            // D4 celda 19 y D4M celda 14
+  trayecto_baterias: [12, 15, 20, 25, 30],
+  k_valores: ["sin castigo", "1", "2", "5", "10", "20", "50", "100"],
+  inventario_corte: "29 de agosto de 2026",                                // D4 celda 24
+};
+const CIU = c => TESIS[c];
+const COLOR = { bog: "var(--bog)", med: "var(--med)" };
+const corto = n => String(n).replace(/\s*\(.*\)\s*$/, "");
+const nombreCarro = id => corto((M.carros || []).find(c => c.id === id)?.nombre || id.replace(/_/g, " "));
+
+// ═════════════════════════════════════════════════ el botón de ciudad
+/* Una sola ciudad para toda la presentación: si se cambia en una escena, las demás
+   la muestran igual al llegar. La tecla C la cambia sin usar el ratón. */
+let CIUDAD = "bog";
+const vistas = {};                     // id de escena → función que la dibuja para CIUDAD
+const pintadaCon = {};                 // id de escena → ciudad con que quedó dibujada
+document.querySelectorAll("[data-ciudad]").forEach(c => {
+  c.setAttribute("role", "group"); c.setAttribute("aria-label", "Ciudad");
+  c.innerHTML = ["bog", "med"].map(k => `<button data-c="${k}" aria-pressed="${k === CIUDAD}">
+    <i style="background:${COLOR[k]}"></i>${CIU(k).nombre}</button>`).join("");
+  c.addEventListener("click", e => { const b = e.target.closest("button"); if (b) ponerCiudad(b.dataset.c); });
+});
+function ponerCiudad(c) {
+  if (c === CIUDAD) return;
+  CIUDAD = c;
+  usarBogota();
+  document.querySelectorAll("[data-ciudad] button").forEach(b => b.setAttribute("aria-pressed", b.dataset.c === c));
+  const id = escenas[actual]?.id;
+  if (vistas[id]) { vistas[id](true); pintadaCon[id] = c; }
+  setTimeout(encajar, 60);
+}
+// cada escena con ciudad se dibuja al entrar si quedó con la otra
+function conCiudad(id, f) {
+  vistas[id] = f;
+  f(false);                            // se pinta ya, para que encajar() mida el contenido real
+  entradas[id] = () => { if (pintadaCon[id] !== CIUDAD) { f(true); pintadaCon[id] = CIUDAD; } };
+}
+addEventListener("keydown", e => {
+  if (e.target.closest("input,select,textarea") || e.key.toLowerCase() !== "c" || e.metaKey || e.ctrlKey) return;
+  if (escenas[actual]?.querySelector("[data-ciudad]")) ponerCiudad(CIUDAD === "bog" ? "med" : "bog");
+});
+
+// ═════════════════════════════════════════════════ Medellín: la red para dibujar
+let MED = null;
+const MED_LISTO = (async () => {
+  const m = M.medellin; if (!m) return null;
+  try {
+    const r = await fetch("datos_bogota/medellin/tramos.bin", { cache: "no-cache" }); if (!r.ok) return null;
+    const b = await r.arrayBuffer(), n = m.n_calles;
+    const f = k => new Float32Array(b, k * n * 4, n);
+    const red = new Uint8Array(b, 6 * n * 4, n);
+    const lu = f(0), au = f(1), lv = f(2), av = f(3), z = f(4), p = f(5);
+    const xs = [], ys = [];
+    for (let i = 0; i < n; i++) if (red[i]) { xs.push(lu[i], lv[i]); ys.push(au[i], av[i]); }
+    const q = (a, t) => Float32Array.from(a).sort()[Math.floor(a.length * t)];
+    const a = q(xs, .01), c = q(xs, .99), bb = q(ys, .01), d = q(ys, .99);
+    const mx = (c - a) * .06, my = (d - bb) * .06;
+    MED = { n, lu, au, lv, av, z, p, red, caja: [a - mx, bb - my, c + mx, d + my], z0: m.z_min, z1: m.z_max };
+    return MED;
+  } catch (e) { console.warn("Medellín:", e); return null; }
+})();
+function trazarMed(g, P, cub, colores, ancho, sobre) {
+  for (let k = 0; k < colores.length; k++) {
+    g.beginPath(); let n = 0;
+    for (let i = 0; i < MED.n; i++) {
+      if (!MED.red[i] || cub[i] !== k) continue;
+      g.moveTo(P.X(MED.lu[i]), P.Y(MED.au[i])); g.lineTo(P.X(MED.lv[i]), P.Y(MED.av[i])); n++;
+    }
+    if (n && colores[k] !== "transparent") { g.strokeStyle = colores[k]; g.lineWidth = ancho(k); g.stroke(); }
+  }
+}
+function cubos(valores, cortes) {
+  const c = new Uint8Array(valores.length);
+  for (let i = 0; i < valores.length; i++) { let k = cortes.length - 1; while (k > 0 && valores[i] < cortes[k]) k--; c[i] = k; }
+  return c;
+}
+
+// ═════════════════════════════════════════════════ objetivos
+{
+  const nombre = id => document.getElementById(id)?.dataset.nombre || id;
+  const bog = TESIS.bog, med = TESIS.med;
+  const OBJ = [
+    ["Construir un grafo dirigido de la red vial de ambas ciudades, con pendiente por segmento derivada de modelos digitales de terreno LiDAR.",
+      ["ciudades", "fase2"], `${nf(bog.tramos_red)} y ${nf(med.tramos_red)} tramos dirigidos en las redes oficiales.`],
+    ["Implementar un modelo de consumo energético para vehículo eléctrico compacto, calibrarlo con telemetría abierta y validarlo contra consumos homologados publicados.",
+      ["fase3", "verificacion"], `Doce carros. Ir y volver por la misma calle da ${nf(bog.fisica.wh_m, 2)} y ${nf(med.fisica.wh_m, 2)} Wh por metro de desnivel, dentro de lo que predice la física.`],
+    ["Cuantificar el efecto de la resolución del modelo digital de elevación sobre la estimación de pendiente y, en consecuencia, sobre la de consumo.",
+      ["confianza", "extremos"], `Error vertical medido de ${nf(bog.sigma_z, 3)} m; llevado a la pendiente, ${nf(bog.err_pend_mediana, 2)} puntos de mediana.`],
+    ["Consolidar un inventario verificado de estaciones de carga a partir de dos fuentes abiertas, cuantificando su incertidumbre posicional y de atributos.",
+      ["fase1"], `${nf(EST.length)} estaciones en Bogotá y ${nf(med.estaciones.length)} en Medellín.`],
+    ["Comparar el ruteo por mínima energía frente al ruteo por mínima distancia, y estimar la alcanzabilidad de la red bajo la infraestructura de carga existente.",
+      ["resultado", "alcance", "trayecto"], `Ahorran más del 5 % el ${nf(bog.cotejo.k0_ciudad_mas5, 1)} % de los viajes en Bogotá y el ${nf(med.estratos.ciudad.mas5, 1)} % en Medellín.`],
+  ];
+  $("#objs").innerHTML = OBJ.map(([t, ids, dato]) => `<li><p>${t}</p>
+    <div class="donde"><span class="dato">${dato}</span></div></li>`).join("");
+  $("#objs").addEventListener("click", e => {
+    const b = e.target.closest("[data-ir]"); if (b) document.getElementById(b.dataset.ir).scrollIntoView();
+  });
+}
+
+// ═════════════════════════════════════════════════ fase 1: las dos fuentes
+{
+  const s = $("#venn");
+  const A = { x: 255, y: 215, r: 178 }, B = { x: 440, y: 215, r: 160 };
+  function grupos(lista) {
+    const cat = x => x.cat || "";
+    return { osm: lista.filter(x => /solo OSM/i.test(cat(x))), ocm: lista.filter(x => /solo OCM/i.test(cat(x))),
+      c1: lista.filter(x => /^C1/.test(cat(x))), c2: lista.filter(x => /^C2/.test(cat(x))), c3: lista.filter(x => /^C3/.test(cat(x))) };
+  }
+  function dibujar(animar) {
+    const lista = CIUDAD === "bog" ? EST : TESIS.med.estaciones, G2 = grupos(lista), total = lista.length;
+    const nom = CIU(CIUDAD).nombre;
+    $("#nConfirmadas").textContent = nf(G2.c1.length);
+    $("#deTotal").textContent = `de ${nf(total)}`;
+    $("#textoConfirmadas").innerHTML = `estaciones de ${nom} aparecen confirmadas por las dos
+      fuentes abiertas. Otras ${nf(G2.c2.length)} son probablemente la misma, y
+      ${nf(G2.osm.length + G2.ocm.length)} están en una sola fuente. Inventario congelado el
+      ${TESIS.inventario_corte}.`;
+    const en = CIU(CIUDAD).enganche;
+    $("#deja1").innerHTML = `<b>Lo que deja esta fase:</b> ${nf(total)} estaciones con su grado de
+      confianza, enganchadas a la esquina más cercana de la red: a ${nf(en.mediana, 1)} m en mediana,
+      ${nf(en.max, 1)} m la más lejana.${CIUDAD === "med" ? " Se quitó un cargador de bicicletas." : ""}`;
+
+    s.innerHTML = "";
+    el(s, "circle", { cx: A.x, cy: A.y, r: A.r, fill: "rgba(38,157,169,.06)", stroke: CSS("--osm"), "stroke-opacity": .55, "stroke-width": 1.2 });
+    el(s, "circle", { cx: B.x, cy: B.y, r: B.r, fill: "rgba(149,117,226,.06)", stroke: CSS("--ocm"), "stroke-opacity": .55, "stroke-width": 1.2 });
+    el(s, "text", { x: A.x - 120, y: 26, "text-anchor": "middle" }, "OpenStreetMap");
+    el(s, "text", { x: B.x + 110, y: 26, "text-anchor": "middle" }, "OpenChargeMap");
+    // Cada estación cae en la región que le corresponde: la fuente se lee por la posición.
+    const dentro = (p, c) => (p[0] - c.x) ** 2 + (p[1] - c.y) ** 2 < (c.r - 13) ** 2;
+    const rejilla = [];
+    for (let y = 40; y < 400; y += 19) for (let x = 60; x < 620; x += 19) rejilla.push([x + ((y / 19) % 2 ? 9.5 : 0), y]);
+    const region = (f, centro, n) => rejilla.filter(f)
+      .sort((a, b) => Math.hypot(a[0] - centro[0], a[1] - centro[1]) - Math.hypot(b[0] - centro[0], b[1] - centro[1])).slice(0, n);
+    const pOSM = region(p => dentro(p, A) && !dentro(p, B), [A.x - 80, A.y], G2.osm.length);
+    const pOCM = region(p => dentro(p, B) && !dentro(p, A), [B.x + 75, B.y], G2.ocm.length);
+    const nAmbas = G2.c1.length + G2.c2.length + G2.c3.length;
+    const pAmb = region(p => dentro(p, A) && dentro(p, B), [(A.x + B.x) / 2 + 8, A.y], nAmbas);
+    const puntos = [];
+    const poner = (l, pos, estilo) => l.forEach((st, i) => pos[i] && puntos.push({ st, p: pos[i], ...estilo }));
+    poner(G2.osm, pOSM, { fill: CSS("--osm") });
+    poner(G2.ocm, pOCM, { fill: CSS("--ocm") });
+    [...G2.c1.map(x => [x, "c1"]), ...G2.c2.map(x => [x, "c2"]), ...G2.c3.map(x => [x, "c3"])].forEach(([st, k], i) =>
+      pAmb[i] && puntos.push({ st, p: pAmb[i], fill: k === "c2" ? CSS("--noche") : CSS("--ambas"),
+        stroke: k === "c3" ? CSS("--brasa") : CSS("--ambas"), sw: k === "c3" ? 2.6 : 1.8 }));
+    const nodos = puntos.map((d, i) => {
+      const c = el(s, "circle", { cx: animar ? 350 : d.p[0], cy: animar ? 470 : d.p[1], r: 6.2, fill: d.fill,
+        stroke: d.stroke || "none", "stroke-width": d.sw || 0, opacity: animar ? 0 : 1, tabindex: 0 });
+      c.style.transition = `cx .9s cubic-bezier(.2,.7,.2,1) ${i * 14}ms, cy .9s cubic-bezier(.2,.7,.2,1) ${i * 14}ms, opacity .4s ${i * 14}ms`;
+      const html = `<b>${d.st.n}</b><br>${d.st.cat}`;
+      c.addEventListener("mousemove", e => sugerir(e, html));
+      c.addEventListener("mouseleave", ocultar);
+      return [c, d];
+    });
+    const cuenta = (pos, cx, n) => { if (!pos.length) return;
+      el(s, "text", { x: cx, y: Math.max(...pos.map(p => p[1])) + 46, "text-anchor": "middle", class: "cuenta" }, nf(n)); };
+    cuenta(pOSM, A.x - 80, G2.osm.length); cuenta(pOCM, B.x + 75, G2.ocm.length); cuenta(pAmb, (A.x + B.x) / 2 + 8, nAmbas);
+    $("#leyVenn").innerHTML = [
+      ["var(--ambas)", "Confirmada en las dos fuentes", G2.c1.length, ""],
+      ["var(--osm)", "Sólo en OpenStreetMap", G2.osm.length, ""],
+      ["transparent", "Probablemente la misma", G2.c2.length, "box-shadow:inset 0 0 0 2px var(--ambas)"],
+      ["var(--ocm)", "Sólo en OpenChargeMap", G2.ocm.length, ""],
+      ["var(--ambas)", "Las dos no coinciden en el lugar", G2.c3.length, "box-shadow:0 0 0 2px var(--brasa)"],
+    ].map(([c, t, n, x]) => `<div><i style="background:${c};${x}"></i>${t}<b>${nf(n)}</b></div>`).join("");
+    if (animar) requestAnimationFrame(() => requestAnimationFrame(() => {
+      for (const [c, d] of nodos) { c.setAttribute("cx", d.p[0]); c.setAttribute("cy", d.p[1]); c.setAttribute("opacity", 1); }
+    }));
+  }
+  conCiudad("fase1", dibujar);
+}
+
+// ═════════════════════════════════════════════════ fase 3: la flota
+{
+  const flota = (M.carros || []).slice().sort((a, b) => (a.bateria_kwh ?? 999) - (b.bateria_kwh ?? 999));
+  const max = Math.max(...flota.map(c => c.bateria_kwh || 0));
+  const minimo = flota[0]?.id;
+  $("#flota").innerHTML = `
+    <div class="carro cabeza"><span>Vehículo</span><span>Batería útil</span>
+      <span class="num">kWh</span><span class="num">kWh/100 km</span><span class="num">Autonomía</span></div>` +
+    flota.map(c => {
+      const ancho = c.bateria_kwh ? c.bateria_kwh / max * 100 : 0;
+      return `<div class="carro${c.id === minimo ? " minimo" : ""}" title="${c.nombre || c.id}">
+        <span class="nom">${corto(c.nombre || c.id.replace(/_/g, " "))}
+          ${c.id === minimo ? "<small>el de menor batería</small>" : ""}</span>
+        <span class="pila"><svg viewBox="0 0 100 13" preserveAspectRatio="none">
+          <rect x="0" y="1" width="97" height="11" rx="2.5" fill="none" stroke="${CSS("--linea2")}" stroke-width="1" vector-effect="non-scaling-stroke"/>
+          <rect x="97.6" y="4" width="2.2" height="5" rx=".8" fill="${CSS("--linea2")}"/>
+          <rect class="nivel" x="1.2" y="2.2" width="0" data-w="${(ancho * .94).toFixed(1)}" height="8.6" rx="1.8" fill="${c.id === minimo ? CSS("--cian") : CSS("--cruzado")}"/>
+        </svg></span>
+        <span class="num"><b>${nf(c.bateria_kwh, 1)}</b></span>
+        <span class="num">${nf(c.consumo_wltp_kwh_100km, 2)}</span>
+        <span class="num">${c.autonomia_wltp_km ? nf(c.autonomia_wltp_km, 0) + " km" : "—"}</span>
+      </div>`;
+    }).join("");
+  $("#notaFlota").textContent = "Ordenados por batería. Consumo y autonomía homologados, como los declara cada fabricante.";
+  let hecho = false;
+  entradas.fase3 = () => {
+    if (hecho) return; hecho = true;
+    document.querySelectorAll("#flota .nivel").forEach((r, i) => {
+      r.style.transition = `width 1s cubic-bezier(.2,.7,.2,1) ${i * 55}ms`;
+      requestAnimationFrame(() => r.setAttribute("width", r.dataset.w));
+    });
+  };
+}
+
+// ═════════════════════════════════════════════════ fase 4: de cada 100 viajes
+{
+  const pe = M.por_estrato || [];
+  const fB = t => pe.find(r => +r.k === 0 && r.terreno === t && r.banda === "todas (ponderado)") || {};
+  const fB50 = t => pe.find(r => +r.k === 50 && r.terreno === t && r.banda === "todas (ponderado)") || {};
+  const me = TESIS.med.estratos;
+  const FILAS = [
+    ["plano", "Terreno plano", "Ni la salida ni la llegada están en la ladera.", "plano"],
+    ["cruzado", "Cruzando del plano a la ladera", "Una punta en el plano y la otra en la ladera.", "cruzado"],
+    ["ladera", "Ladera", "Salida y llegada están en la ladera.", "ladera"],
+    ["Bogota", "Toda la ciudad", "Los tres terrenos juntos, con el peso que tiene cada uno en la ciudad.", "ciudad"],
+  ];
+  const ESCALA = 50;     // la barra llena son 50 de cada 100: el mayor valor es 46,4
+  $("#filasRes").innerHTML = `<div class="eje-res"><span></span><div>${[0, 10, 20, 30, 40, 50].map(v =>
+    `<i style="left:${v / ESCALA * 100}%">${v}</i>`).join("")}</div></div>` +
+    FILAS.map(([tb, nombre, expl, tm]) => {
+      const b = +fB(tb).pct_ahorro_mayor_5, m = me[tm].mas5;
+      const barra = (v, k, viajes) => `<div class="barra-res${v / ESCALA < .3 ? " corta" : ""}" data-w="${(v / ESCALA * 100).toFixed(1)}"
+        data-tip="<b>${CIU(k).nombre} · ${nombre}</b><br>${nf(v, 1)} % de ${nf(viajes)} viajes">
+        <i style="background:var(--${k})"></i><b>${nf(v, 1)}<small> de cada 100</small></b></div>`;
+      return `<div class="fila-res${tb === "Bogota" ? " total" : ""}">
+        <div><h3>${nombre}</h3><p>${expl}</p></div>
+        <div>${barra(b, "bog", +fB(tb).viajes)}${barra(m, "med", me[tm].viajes)}</div></div>`;
+    }).join("");
+  $("#filasRes").addEventListener("mousemove", e => {
+    const t = e.target.closest("[data-tip]"); t ? sugerir(e, t.dataset.tip) : ocultar();
+  });
+  $("#filasRes").addEventListener("mouseleave", ocultar);
+  const bc = fB("Bogota"), mc = me.ciudad;
+  $("#franjaCiudad").innerHTML = `
+    <div><b>${nf(+bc.baja_intensidad_pct, 1)} % · ${nf(mc.baja, 1)} %</b>menos energía por kilómetro en toda la ciudad,
+      Bogotá y Medellín, si cada viaje toma la ruta de mínimo consumo</div>
+    <div><b>${nf(+bc.pct_ruta_cambia, 1)} % · ${nf(mc.cambia, 1)} %</b>de los viajes toma una ruta distinta de la más corta</div>
+    <div><b>${nf(+fB50("Bogota").pct_ahorro_mayor_5, 1)} % · ${nf(TESIS.med.mas5_k50, 1)} %</b>ahorran más del 5 % aunque se
+      eviten las calles de más de 35 %
+      <span class="fuente">BYD Dolphin al mediodía. Bogotá: paquete de datos de D4. Medellín: cuaderno D4M, celda 20b.</span></div>`;
+  let hecho = false;
+  entradas.resultado = () => {
+    if (hecho) return; hecho = true;
+    document.querySelectorAll("#filasRes .barra-res").forEach((b, i) => {
+      const r = b.querySelector("i");
+      r.style.transition = QUIETO ? "none" : `width 1.1s cubic-bezier(.2,.7,.2,1) ${200 + i * 90}ms`;
+      b.style.setProperty("--w", b.dataset.w + "%");
+      requestAnimationFrame(() => requestAnimationFrame(() => r.style.width = b.dataset.w + "%"));
+    });
+  };
+}
+
+// ═════════════════════════════════════════════════ fase 4: los doce carros
+{
+  /* La misma medida en las dos ciudades: viajes que ahorran más del 5 %, ponderado a la
+     ciudad, mediodía, k = 50. Bogotá sale de su paquete; Medellín, del paquete de Medellín
+     (archivo D4M_12_carros_k50.csv de la celda 20d). Si ese archivo no está, se muestra
+     sólo Bogotá y se dice. */
+  const valor = r => {
+    if (!r) return NaN;
+    if ("pct_ahorro_mayor_5" in r) return +r.pct_ahorro_mayor_5;
+    const k = Object.keys(r).find(c => /mayor_5/.test(c) && !/sin_ponderar/.test(c));
+    return k ? +r[k] : NaN;
+  };
+  const s = $("#gCarros");
+  let hecho = false;
+  async function dibujar() {
+    let medTabla = [];
+    try {
+      const mm = await fetch("datos_medellin/meta.json", { cache: "no-cache" }).then(r => r.ok ? r.json() : null);
+      medTabla = (mm && mm.por_vehiculo) || [];
+    } catch (e) {}
+    const filas = (M.por_vehiculo || []).map(r => ({ id: r.vehiculo, bog: valor(r),
+        med: valor(medTabla.find(x => (x.vehiculo ?? x.carro ?? x["Unnamed: 0"]) === r.vehiculo)),
+        bat: (M.carros || []).find(c => c.id === r.vehiculo)?.bateria_kwh }))
+      .filter(r => Number.isFinite(r.bog)).sort((a, b) => (a.bat ?? 0) - (b.bat ?? 0));
+    const hayMed = filas.some(r => Number.isFinite(r.med));
+    const rango = k => { const v = filas.map(r => r[k]).filter(Number.isFinite); return [Math.min(...v), Math.max(...v)]; };
+    const [b0, b1] = rango("bog"), [m0, m1] = hayMed ? rango("med") : [NaN, NaN];
+    $("#cifrasCarros").innerHTML = `
+      <div style="--c:var(--bog)"><b>Bogotá</b><span class="cifra">${nf(b0, 1)}–${nf(b1, 1)}<small>%</small></span>
+        <span>de los viajes ahorran más del 5 %, según el carro</span></div>
+      <div style="--c:var(--med)"><b>Medellín</b><span class="cifra">${hayMed ? `${nf(m0, 1)}–${nf(m1, 1)}<small>%</small>` : "—"}</span>
+        <span>${hayMed ? "de los viajes ahorran más del 5 %, según el carro" : "falta D4M_12_carros_k50.csv en el paquete"}</span></div>`;
+    $("#notaCarros").textContent = `Ponderado a la ciudad, mediodía, con castigo k = 50 a las calles de más de 35 %.
+      Bogotá: paquete de D4. Medellín: paquete de D4M (celda 20d).`;
+    s.innerHTML = "";
+    const W = 640, m = { t: 30, r: 30, b: 40, l: 170 }, paso = 32, H = m.t + m.b + paso * filas.length;
+    s.setAttribute("viewBox", `0 0 ${W} ${H}`);
+    const todos = filas.flatMap(r => [r.bog, r.med]).filter(Number.isFinite);
+    const lo = Math.floor(Math.min(...todos) / 5) * 5, hi = Math.ceil(Math.max(...todos) / 5) * 5 || lo + 5;
+    const X = v => m.l + (v - lo) / (hi - lo) * (W - m.l - m.r);
+    for (let v = lo; v <= hi; v += 5) {
+      el(s, "line", { x1: X(v), x2: X(v), y1: m.t - 6, y2: H - m.b, stroke: CSS("--linea"), "stroke-width": 1 });
+      el(s, "text", { x: X(v), y: H - m.b + 18, "text-anchor": "middle" }, v + " %");
+    }
+    el(s, "text", { x: (m.l + W - m.r) / 2, y: H - 4, "text-anchor": "middle" }, "viajes que ahorran más del 5 % de la energía");
+    el(s, "text", { x: m.l, y: 14 }, "ordenados por batería, de la más chica a la más grande");
+    filas.forEach((r, i) => {
+      const y = m.t + paso * (i + .5), conMed = Number.isFinite(r.med);
+      el(s, "text", { x: m.l - 14, y: y + 4, "text-anchor": "end", class: "loc" }, nombreCarro(r.id));
+      const ln = conMed ? el(s, "line", { x1: X(r.bog), x2: X(r.bog), y1: y, y2: y, stroke: CSS("--linea2"), "stroke-width": 2 }) : null;
+      el(s, "circle", { cx: X(r.bog), cy: y, r: 6, fill: CSS("--bog"), stroke: CSS("--noche"), "stroke-width": 2 });
+      const pm = conMed ? el(s, "circle", { cx: X(r.bog), cy: y, r: 6, fill: CSS("--med"), stroke: CSS("--noche"), "stroke-width": 2 }) : null;
+      const z = el(s, "rect", { x: 0, y: y - paso / 2, width: W, height: paso, fill: "transparent" });
+      z.addEventListener("mousemove", e => sugerir(e, `<b>${nombreCarro(r.id)}</b>${r.bat ? ` · ${nf(r.bat, 1)} kWh` : ""}<br>
+        Bogotá ${nf(r.bog, 1)} %${conMed ? ` · Medellín ${nf(r.med, 1)} %` : ""}`));
+      z.addEventListener("mouseleave", ocultar);
+      if (conMed) requestAnimationFrame(() => requestAnimationFrame(() => {
+        for (const n of [ln, pm]) n.style.transition = QUIETO ? "none" : `all .9s cubic-bezier(.2,.7,.2,1) ${i * 45}ms`;
+        ln.setAttribute("x2", X(r.med)); pm.setAttribute("cx", X(r.med));
+      }));
+    });
+  }
+  entradas.carros12 = () => { if (hecho) return; hecho = true; dibujar(); };
+}
+
+// ═════════════════════════════════════════════════ fase 5: llegar a cargar
+{
+  function dibujar(animar) {
+    const al = CIUDAD === "bog" ? (M.alcanzabilidad || []).filter(r => r.escenario === M.escenario) : TESIS.med.alcance;
+    const nom = CIU(CIUDAD).nombre;
+    const peor = al.slice().sort((a, b) => +a.bateria_kwh - +b.bateria_kwh)[0];
+    if (peor) {
+      $("#pctAlcance").innerHTML = nf(+peor.alcanzable_20pct_pesimista, 2) + '<small style="font-size:.42em;color:var(--tinta2)">%</small>';
+      const oficial = Math.min(...al.map(r => +r.alcanzable_20pct));
+      $("#textoAlcance").innerHTML = `de las esquinas de ${nom} llegan a una estación con el 20 % de la batería,
+        aun con el carro de menor batería, el ${nombreCarro(peor.vehiculo)} (${nf(+peor.bateria_kwh, 1)} kWh), y con el
+        consumo de los tramos que gastan inflado 1,4 veces. ${oficial >= 100 ? "Sin ese factor pesimista, todos los carros llegan desde el 100 % de las esquinas."
+        : `Sin ese factor pesimista, ningún carro baja de ${nf(oficial, 3)} %.`}`;
+    }
+    $("#tituloBarras").textContent = `La esquina más exigente de ${nom}, en porcentaje de la batería de cada carro`;
+    const filas = al.slice().sort((a, b) => +b.pct_bateria_max - +a.pct_bateria_max);
+    const max = 11;                    // la misma escala en las dos ciudades: se comparan a ojo
+    $("#barrasAlcance").innerHTML = filas.map(r => `<div class="barra${r === peor ? " minimo" : ""}" data-w="${(+r.pct_bateria_max / max * 100).toFixed(1)}">
+      <span>${nombreCarro(r.vehiculo)}</span><div class="pista"><i style="background:${COLOR[CIUDAD]}"></i></div>
+      <span class="valor">${nf(+r.pct_bateria_max, 2)} %</span></div>`).join("");
+    $("#pieBarras").textContent = CIUDAD === "bog" ? `Tabla de alcanzabilidad del paquete, escenario ${M.escenario}.`
+      : "Cuaderno D4 Medellín, celda 13, red oficial.";
+    document.querySelectorAll("#barrasAlcance .barra").forEach((b, i) => {
+      const r = b.querySelector(".pista i");
+      if (!animar || QUIETO) { r.style.transition = "none"; r.style.width = b.dataset.w + "%"; return; }
+      r.style.transitionDelay = `${i * 60}ms`;
+      requestAnimationFrame(() => requestAnimationFrame(() => r.style.width = b.dataset.w + "%"));
+    });
+  }
+  conCiudad("alcance", dibujar);
+}
+
+// ═════════════════════════════════════════════════ fase 5: ir y volver
+{
+  const s = $("#gTrayecto"), B = TESIS.trayecto_baterias;
+  $("#cifrasTrayecto").innerHTML = ["bog", "med"].map(k => `<div style="--c:${COLOR[k]}"><b>${CIU(k).nombre}</b>
+    <span class="cifra">${nf(CIU(k).trayecto[2], 1)}<small>%</small></span>
+    <span>de los viajes van y vuelven saliendo con 20 %. Hace falta salir con ${nf(CIU(k).trayecto_mediana, 1)} %
+    en la mediana.</span></div>`).join("");
+  let hecho = false;
+  function dibujar() {
+    s.innerHTML = "";
+    const W = 620, H = 380, m = { t: 20, r: 96, b: 44, l: 48 };
+    const X = b => m.l + (b - 12) / (30 - 12) * (W - m.l - m.r), Y = v => H - m.b - v / 100 * (H - m.t - m.b);
+    for (const v of [0, 25, 50, 75, 100]) {
+      el(s, "line", { x1: m.l, x2: W - m.r, y1: Y(v), y2: Y(v), stroke: CSS("--linea"), "stroke-width": 1 });
+      el(s, "text", { x: m.l - 10, y: Y(v) + 4, "text-anchor": "end" }, v + " %");
+    }
+    for (const b of B) el(s, "text", { x: X(b), y: H - m.b + 22, "text-anchor": "middle" }, b + " %");
+    el(s, "text", { x: (m.l + W - m.r) / 2, y: H - 4, "text-anchor": "middle" }, "batería al salir");
+    el(s, "line", { x1: X(20), x2: X(20), y1: m.t, y2: H - m.b, stroke: CSS("--linea2"), "stroke-dasharray": "3 4" });
+    for (const k of ["bog", "med"]) {
+      const v = CIU(k).trayecto, col = CSS("--" + k);
+      const d = "M" + B.map((b, i) => `${X(b)} ${Y(v[i])}`).join(" L");
+      const p = el(s, "path", { d, fill: "none", stroke: col, "stroke-width": 2.4, "stroke-linejoin": "round" });
+      const L = p.getTotalLength(); p.style.strokeDasharray = L; p.style.strokeDashoffset = QUIETO ? 0 : L;
+      requestAnimationFrame(() => requestAnimationFrame(() => { p.style.transition = "stroke-dashoffset 1.6s cubic-bezier(.4,.1,.2,1)"; p.style.strokeDashoffset = 0; }));
+      B.forEach((b, i) => {
+        el(s, "circle", { cx: X(b), cy: Y(v[i]), r: 5.5, fill: CSS("--noche") });
+        const c = el(s, "circle", { cx: X(b), cy: Y(v[i]), r: 4, fill: col });
+        const zona = el(s, "circle", { cx: X(b), cy: Y(v[i]), r: 14, fill: "transparent" });
+        zona.addEventListener("mousemove", e => sugerir(e, `<b>${CIU(k).nombre}</b><br>saliendo con ${b} %: ${nf(v[i], 1)} % de los viajes van y vuelven`));
+        zona.addEventListener("mouseleave", ocultar);
+      });
+      el(s, "text", { x: X(30) + 12, y: Y(v[4]) + (k === "bog" ? -4 : 14), class: "et", style: `fill:${col}` }, CIU(k).nombre);
+    }
+    el(s, "text", { x: X(20) + 6, y: m.t + 12 }, "20 %");
+    const f = el(s, "text", { x: m.l, y: H + 16 }, "Reserva de 10 %. Cuadernos D4 y D4M, celda 15e.");
+    f.setAttribute("font-size", "11");
+  }
+  entradas.trayecto = () => { if (hecho) return; hecho = true; dibujar(); };
+}
+
+// ═════════════════════════════════════════════════ fase 2: qué tan confiable es la pendiente
+{
+  const b = TESIS.bog, m = TESIS.med;
+  $("#notaSigma").innerHTML = `Llevado a la pendiente de cada calle, ese error da una mediana de
+    ${nf(b.err_pend_mediana, 2)} puntos de pendiente. En Medellín no se pudo medir: no hay suficientes
+    vértices del IGAC con coordenada calculada. La ficha oficial declara ${nf(m.sigma_ficha, 2)} m y la rama
+    oficial usa ${nf(m.sigma_z, 3)} m.`;
+  const maxErr = Math.max(...b.estimacion.map(x => x.err));
+  $("#cadena").innerHTML = `
+    <div class="eslabon"><div><h3>Donde el modelo de terreno no llega</h3>
+        <p>Tramos sin dato de altura. Se dejan en la red y su altura se estima desde las esquinas vecinas.</p></div>
+      <div class="par-ciudad">
+        <div style="--c:var(--bog)"><span class="cifra">${nf(b.sin_altura.pct, 2)}<small>%</small></span>
+          <span>de los tramos (${nf(b.sin_altura.tramos)}), ${nf(b.sin_altura.pct_km, 2)} % de los km. Sobre todo Usme
+          rural (${nf(b.sin_altura.usme, 1)} % de sus km) y Ciudad Bolívar (${nf(b.sin_altura.cbolivar, 1)} %).</span></div>
+        <div style="--c:var(--med)"><span class="cifra">${nf(m.sin_altura.tramos)}<small>de ${nf(m.tramos)}</small></span>
+          <span>tramos: una sola calle, la ${m.sin_altura.nombre} (${nf(m.sin_altura.km, 2)} km).</span></div>
+      </div></div>
+    <div class="eslabon"><div><h3>Adivinar la altura que falta</h3>
+        <p>Se escondieron esquinas con altura conocida y se adivinaron. Error típico de la pendiente, en puntos.
+        En el borde, donde están los huecos reales, sube a ${nf(b.borde[0], 2)}–${nf(b.borde[1], 2)}.</p></div>
+      <div class="metodos">${b.estimacion.map(x => `<div class="metodo${x.usado ? " usado" : ""}"
+          title="${nf(x.falsas)} pendientes extremas inventadas"><span>${x.metodo}${x.usado ? " · el usado" : ""}</span>
+          <div class="pista"><i style="width:${(x.err / maxErr * 100).toFixed(1)}%"></i></div><b>${nf(x.err, 2)}</b></div>`).join("")}
+        <span class="fuente">Extremas inventadas: ${nf(b.estimacion[0].falsas)} con el grafo, de
+          ${nf(Math.min(...b.estimacion.slice(1).map(x => x.falsas)))} a ${nf(Math.max(...b.estimacion.slice(1).map(x => x.falsas)))} con vecinas en el mapa. Bogotá, celda 8b.</span></div></div>
+    <div class="eslabon"><div><h3>Una sola altura por esquina</h3>
+        <p>Las calles que llegan a una misma esquina deben verla a la misma altura.</p></div>
+      <div class="par-ciudad">
+        <div style="--c:var(--bog)"><span class="cifra">${nf(b.coherentes.pct, 1)}<small>%</small></span>
+          <span>de las ${nf(b.coherentes.de)} esquinas con dos o más calles tienen exactamente la misma altura en todas.</span></div>
+        <div style="--c:var(--med)"><span class="cifra">${nf(m.dispersion_max, 3)}<small>m</small></span>
+          <span>es la mayor diferencia en ${nf(m.esquinas_2calles)} esquinas; en el 99 % es cero.</span></div>
+      </div></div>`;
+}
+
+// ═════════════════════════════════════════════════ fase 2: los tramos de más de 35 %
+{
+  const GR = [["calle", "Se ve una calle", "var(--tinta2)"], ["escsen", "Escalera o sendero", "var(--brasa)"],
+    ["no_se_ve", "No se ve una calle", "var(--linea2)"]];
+  const TINTA_AP = { no_se_ve: "var(--tinta2)" };
+  $("#apiladas").innerHTML = ["bog", "med"].map(k => {
+    const s = CIU(k).street, v = { calle: s.calle, escsen: s.escalera + s.sendero, no_se_ve: s.no_se_ve };
+    return `<div class="apilada"><div class="cab"><b><i style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${COLOR[k]};margin-right:.45rem"></i>${CIU(k).nombre}</b>
+      <span>${nf(s.revisadas)} calles revisadas</span></div>
+      <div class="barra-ap">${GR.map(([g, t, c]) => v[g] ? `<i style="flex:${v[g]};background:${c};color:${TINTA_AP[g] || "var(--noche)"}" data-t="${t}" data-n="${v[g]}" data-k="${k}">${v[g]}</i>` : "").join("")}</div></div>`;
+  }).join("") + `<div class="clave-ap">${GR.map(([, t, c]) => `<span><i style="background:${c}"></i>${t}</span>`).join("")}</div>`;
+  $("#apiladas").addEventListener("mousemove", e => {
+    const i = e.target.closest("[data-t]"); if (!i) return ocultar();
+    const s = CIU(i.dataset.k).street;
+    const det = i.dataset.t === "Se ve una calle" ? `calle normal ${s.normal} · abierta, sin pavimentar ${s.abierta}`
+      : i.dataset.t === "Escalera o sendero" ? `escalera ${s.escalera} · sendero o paso angosto ${s.sendero}` : "vegetación, monte o casas";
+    sugerir(e, `<b>${CIU(i.dataset.k).nombre}: ${i.dataset.n} de ${s.revisadas}</b><br>${i.dataset.t}<br>${det}`);
+  });
+  $("#apiladas").addEventListener("mouseleave", ocultar);
+  const f = TESIS.bog.franja_35_50, se = TESIS.med.sin_escaleras;
+  $("#notaApiladas").innerHTML = `Bogotá: los ${TESIS.bog.street.revisadas} más empinados, uno por calle; en una muestra al azar de
+    la franja de 35 a 50 %, el ${f.calles_pct} % son calles reales (${f.ic[0]} a ${f.ic[1]} %) y ${f.escaleras} de ${f.de}
+    escaleras. Medellín: quitar escaleras y senderos deja ${nf(se.esquinas_sin_ruta)} de ${nf(TESIS.med.esquinas_red)} esquinas
+    sin ruta y cambia el consumo como máximo ${nf(se.cambio_max_pct, 3)} %. Es una revisión visual, no una medición.`;
+
+  const s = $("#gK");
+  let hecho = false;
+  function dibujar() {
+    s.innerHTML = "";
+    const W = 600, H = 360, m = { t: 22, r: 96, b: 44, l: 44 }, K = TESIS.k_valores;
+    const X = i => m.l + i / (K.length - 1) * (W - m.l - m.r), Y = v => H - m.b - v / 14 * (H - m.t - m.b);
+    for (const v of [0, 2, 4, 6, 8, 10, 12, 14]) {
+      el(s, "line", { x1: m.l, x2: W - m.r, y1: Y(v), y2: Y(v), stroke: CSS("--linea"), "stroke-width": 1 });
+      if (v % 4 === 0) el(s, "text", { x: m.l - 10, y: Y(v) + 4, "text-anchor": "end" }, v + " %");
+    }
+    K.forEach((k, i) => el(s, "text", { x: X(i), y: H - m.b + 20, "text-anchor": "middle" }, i ? k : "sin"));
+    el(s, "text", { x: (m.l + W - m.r) / 2, y: H - 4, "text-anchor": "middle" }, "castigo k a los tramos de más de 35 %");
+    const i50 = K.indexOf("50");
+    el(s, "line", { x1: X(i50), x2: X(i50), y1: m.t, y2: H - m.b, stroke: CSS("--linea2"), "stroke-dasharray": "3 4" });
+    el(s, "text", { x: X(i50) - 6, y: m.t + 10, "text-anchor": "end" }, "k = 50 en las dos");
+    for (const k of ["bog", "med"]) {
+      const v = CIU(k).k_curva, col = CSS("--" + k);
+      const p = el(s, "path", { d: "M" + v.map((y, i) => `${X(i)} ${Y(y)}`).join(" L"), fill: "none", stroke: col,
+        "stroke-width": 2.4, "stroke-linejoin": "round" });
+      const L = p.getTotalLength(); p.style.strokeDasharray = L; p.style.strokeDashoffset = QUIETO ? 0 : L;
+      requestAnimationFrame(() => requestAnimationFrame(() => { p.style.transition = "stroke-dashoffset 1.6s cubic-bezier(.4,.1,.2,1)"; p.style.strokeDashoffset = 0; }));
+      v.forEach((y, i) => {
+        el(s, "circle", { cx: X(i), cy: Y(y), r: 5.5, fill: CSS("--noche") });
+        el(s, "circle", { cx: X(i), cy: Y(y), r: 4, fill: col });
+        const z = el(s, "circle", { cx: X(i), cy: Y(y), r: 13, fill: "transparent" });
+        z.addEventListener("mousemove", e => sugerir(e, `<b>${CIU(k).nombre}</b><br>${i ? "k = " + K[i] : "sin castigo"}: ${nf(y, 1)} % de las rutas`));
+        z.addEventListener("mouseleave", ocultar);
+      });
+      el(s, "text", { x: X(K.length - 1) + 12, y: Y(v[v.length - 1]) + (k === "bog" ? -6 : 14), class: "et", style: `fill:${col}` }, CIU(k).nombre);
+      el(s, "text", { x: X(0) + 10, y: Y(v[0]) - 10 }, nf(v[0], 1) + " %");
+    }
+  }
+  $("#notaK").textContent = `500 viajes al azar, BYD Dolphin, mediodía. En Bogotá la regla eligió k = 50; en Medellín la
+    misma regla da k = 1, pero se usa 50 para que el contraste entre ciudades no mezcle un cambio de parámetro.
+    La comparación central de los resultados es sin castigo (k = 0).`;
+  entradas.extremos = () => { if (hecho) return; hecho = true; dibujar(); };
+}
+
+// ═════════════════════════════════════════════════ dos ciudades: altura a la misma escala
+/* Cada ciudad en su propio recuadro, separados por una línea, con su nombre arriba.
+   Las dos con la misma escala (un kilómetro mide lo mismo) y los mismos cortes de altura,
+   medidos sobre la esquina más baja de cada ciudad. */
+const CORTES_Z = [0, 25, 50, 100, 200, 400, 800];
+{
+  const cv = $("#cvCiudades");
+  let hecho = false;
+  $("#rampaAltura").innerHTML = RAMPA_Z.map(c => `<i style="background:${c}"></i>`).join("");
+  $("#pieAltura").innerHTML = [0, 50, 200, 800].map((z, i, a) => `<span>${nf(z)}${i === a.length - 1 ? "+" : ""} m</span>`).join("");
+  $("#notaAltura").textContent = "Color: altura de cada calle sobre la esquina más baja de su ciudad. Los mismos colores y la misma escala en las dos.";
+  function cifras() {
+    const b = RED ? RED.z1 - RED.z0 : null, m = M.medellin ? M.medellin.z_max - M.medellin.z_min : null;
+    $("#cifrasCiudades").innerHTML = `
+      <div style="--c:var(--bog)"><b>Bogotá</b><span class="cifra">${b != null ? nf(b, 0) : "—"}<small>m</small></span>
+        <span>entre la esquina más baja y la más alta de la red. ${nf(M.km_red, 0)} km de calles.</span></div>
+      <div style="--c:var(--med)"><b>Medellín</b><span class="cifra">${m != null ? nf(m, 0) : "—"}<small>m</small></span>
+        <span>entre la esquina más baja y la más alta de la red. ${nf(TESIS.med.km_red, 0)} km de calles.</span></div>`;
+  }
+  cifras();
+  const extension = (xs, ys, ok = () => true) => {
+    let a = 180, b = 90, c = -180, d = -90;
+    for (let i = 0; i < xs.length; i++) { if (!ok(i)) continue; const x = xs[i], y = ys[i];
+      if (x < a) a = x; if (x > c) c = x; if (y < b) b = y; if (y > d) d = y; }
+    return [a, b, c, d];
+  };
+  function dibujar(animar) {
+    const W = cv.clientWidth, H = cv.clientHeight, cab = 64, pie = 34, hueco = 46;   // px
+    usarBogota();
+    const D = G.D;
+    let cajaB = [180, 90, -180, -90];
+    for (let i = 0; i < D.xy.length; i += 2) { const x = D.xy[i], y = D.xy[i + 1];
+      if (x < cajaB[0]) cajaB[0] = x; if (x > cajaB[2]) cajaB[2] = x; if (y < cajaB[1]) cajaB[1] = y; if (y > cajaB[3]) cajaB[3] = y; }
+    const cajaM = MED ? (() => { const a = extension(MED.lu, MED.au, i => MED.red[i]), b = extension(MED.lv, MED.av, i => MED.red[i]);
+      return [Math.min(a[0], b[0]), Math.min(a[1], b[1]), Math.max(a[2], b[2]), Math.max(a[3], b[3])]; })() : null;
+    const km = ([x0, y0, x1, y1]) => [(x1 - x0) * Math.cos((y0 + y1) / 2 * Math.PI / 180) * 111.32, (y1 - y0) * 111.32];
+    const [wb, hb] = km(cajaB), [wm, hm] = cajaM ? km(cajaM) : [0, 0];
+    const altoUtil = H - cab - pie;
+    const s = Math.min((W - hueco * (cajaM ? 1 : 0) - 16) / (wb + wm), altoUtil / Math.max(hb, hm));   // px por km
+    const anchoB = wb * s, anchoM = wm * s;
+    const x0 = (W - anchoB - (cajaM ? hueco + anchoM : 0)) / 2;
+    const proy = ([a, b, , d], izq, alto) => {
+      const cl = Math.cos((b + d) / 2 * Math.PI / 180), top = cab + (altoUtil - alto) / 2;
+      return { X: x => izq + (x - a) * cl * 111.32 * s, Y: y => top + (d - y) * 111.32 * s };
+    };
+    const { o, g } = aparte(W, H);
+    const titulo = (nombre, sub, x, color) => {
+      g.fillStyle = color; g.fillRect(x, 8, 22, 2);
+      g.fillStyle = CSS("--tinta"); g.font = "400 26px Fraunces, serif"; g.textAlign = "left"; g.fillText(nombre, x, 40);
+      g.fillStyle = CSS("--tinta3"); g.font = "400 12px 'Inter Tight', sans-serif"; g.fillText(sub, x, 58);
+    };
+    // Bogotá
+    const Pb = proy(cajaB, x0, hb * s);
+    const zb = new Float32Array(RED.zd.length); for (let i = 0; i < zb.length; i++) zb[i] = RED.zd[i] - RED.z0;
+    g.save(); g.beginPath(); g.rect(x0 - 4, cab - 4, anchoB + 8, altoUtil + 8); g.clip();
+    trazar(g, Pb, cubos(zb, CORTES_Z), RAMPA_Z, k => .45 + k * .12);
+    g.restore();
+    titulo("Bogotá", `sabana y cerros orientales · ${nf(RED.z0, 0)} a ${nf(RED.z1, 0)} m`, x0, CSS("--bog"));
+    // separador y Medellín
+    if (cajaM) {
+      const xs = x0 + anchoB + hueco / 2;
+      g.strokeStyle = CSS("--linea2"); g.lineWidth = 1; g.setLineDash([3, 5]);
+      g.beginPath(); g.moveTo(xs, 6); g.lineTo(xs, H - pie + 6); g.stroke(); g.setLineDash([]);
+      const xm = x0 + anchoB + hueco;
+      const Pm = proy(cajaM, xm, hm * s);
+      const zm = new Float32Array(MED.n); for (let i = 0; i < MED.n; i++) zm[i] = MED.z[i] - MED.z0;
+      g.save(); g.beginPath(); g.rect(xm - 4, cab - 4, anchoM + 8, altoUtil + 8); g.clip();
+      trazarMed(g, Pm, cubos(zm, CORTES_Z), RAMPA_Z, k => .45 + k * .12);
+      g.restore();
+      titulo("Medellín", `valle del Aburrá · ${nf(MED.z0, 0)} a ${nf(MED.z1, 0)} m`, xm, CSS("--med"));
+    } else {
+      g.fillStyle = CSS("--tinta3"); g.font = "400 12px 'Inter Tight', sans-serif";
+      g.fillText("Falta datos_bogota/medellin: corre el empaquetador de nuevo.", x0 + anchoB + 30, cab + 20);
+    }
+    // escala: 10 km
+    const yb = H - 12;
+    g.strokeStyle = CSS("--tinta3"); g.lineWidth = 1.5;
+    g.beginPath(); g.moveTo(x0, yb - 4); g.lineTo(x0, yb); g.lineTo(x0 + 10 * s, yb); g.lineTo(x0 + 10 * s, yb - 4); g.stroke();
+    g.fillStyle = CSS("--tinta3"); g.font = "400 11px 'Inter Tight', sans-serif"; g.textAlign = "left";
+    g.fillText("10 km, igual en las dos", x0 + 10 * s + 8, yb + 1);
+    animar ? revelar(cv, o, 2400) : lienzo(cv).g.drawImage(o, 0, 0, W, H);
+  }
+  entradas.ciudades = () => alListo(() => MED_LISTO.then(() => { cifras(); dibujar(!hecho); hecho = true; }));
+  addEventListener("resize", () => hecho && dibujar(false));
+}
+
+// ═════════════════════════════════════════════════ fase 2: pendiente de cada calle
+{
+  const cv = $("#cvPend");
+  $("#rampaPend").innerHTML = RAMPA_P.map(c => `<i style="background:${c}"></i>`).join("");
+  $("#piePend").innerHTML = CORTES.map((v, i) => `<span>${nf(v, v % 1 ? 1 : 0)}${i === CORTES.length - 1 ? "+" : ""} %</span>`).join("");
+  let cubMed = null;
+  function dibujar(animar) {
+    const W = cv.clientWidth, H = cv.clientHeight, D = G.D, med = CIUDAD === "med";
+    const nom = CIU(CIUDAD).nombre;
+    $("#entradaPend").textContent = `La pendiente sale de restar alturas del modelo de terreno a lo largo de cada
+      tramo de calle. ${CIU(CIUDAD).mdt}.`;
+    const c = med ? { calles: M.medellin?.n_calles_red, esq: TESIS.med.esquinas_red, km: TESIS.med.km_red, ext: TESIS.med.extremas_red }
+      : { calles: M.n_dibujo, esq: M.n_nodos, km: M.km_red, ext: M.aristas_extremas };
+    $("#cuentas2").innerHTML = `
+      <div><span class="cifra" data-n="${c.calles ?? ""}">${c.calles == null ? "—" : 0}</span><small>calles</small></div>
+      <div><span class="cifra" data-n="${c.esq}">0</span><small>esquinas</small></div>
+      <div><span class="cifra" data-n="${c.km}">0</span><small>kilómetros de red</small></div>
+      <div class="alerta"><span class="cifra" data-n="${c.ext}">0</span><small>tramos de más de 35 %</small></div>`;
+    document.querySelectorAll("#cuentas2 .cifra").forEach(n => n.dataset.n !== "" && (animar ? contar(n, +n.dataset.n) : n.textContent = nf(+n.dataset.n)));
+    // reparto de las calles por pendiente, calculado de los datos de la ciudad
+    let rep;
+    if (med && MED) { rep = new Array(CORTES.length).fill(0); for (let i = 0; i < MED.n; i++) if (MED.red[i]) rep[cubMed[i]]++; }
+    else if (!med) rep = G.repartoPendiente(CORTES);
+    if (rep) {
+      const tot = rep.reduce((x, y) => x + y, 0);
+      $("#notaReparto").textContent = `${nom}: ${nf((rep[0] + rep[1]) / tot * 100, 0)} % de las calles tiene menos de 3 % de
+        pendiente; ${nf((rep[4] + rep[5] + rep[6]) / tot * 100, 1)} % pasa del 8 %.`;
+    } else $("#notaReparto").textContent = "";
+    const P = proyector(med ? (MED?.caja || RED.caja) : RED.caja, W, H, 14);
+    const { o, g } = aparte(W, H);
+    if (med && !MED) {
+      g.fillStyle = CSS("--tinta3"); g.font = "400 13px 'Inter Tight', sans-serif"; g.textAlign = "center";
+      g.fillText("Falta datos_bogota/medellin: corre el empaquetador de nuevo.", W / 2, H / 2);
+    } else if (med) {
+      trazarMed(g, P, cubMed, RAMPA_P, k => k < 3 ? .6 : .7 + (k - 2) * .25);
+      g.save(); g.globalCompositeOperation = "lighter"; g.globalAlpha = .35; g.filter = "blur(3px)";
+      trazarMed(g, P, cubMed, RAMPA_P.map((c, k) => k >= 4 ? c : "transparent"), () => 2.2);
+      g.restore();
+      g.beginPath();
+      for (let i = 0; i < MED.n; i++) if (MED.red[i] && MED.p[i] > 35) { g.moveTo(P.X(MED.lu[i]), P.Y(MED.au[i])); g.lineTo(P.X(MED.lv[i]), P.Y(MED.av[i])); }
+      g.strokeStyle = CSS("--brasa"); g.lineWidth = 1.6; g.stroke();
+    } else {
+      trazar(g, P, RED.cubP, RAMPA_P, k => k < 3 ? .5 : .55 + (k - 2) * .22);
+      g.save(); g.globalCompositeOperation = "lighter"; g.globalAlpha = .35; g.filter = "blur(3px)";
+      trazar(g, P, RED.cubP, RAMPA_P.map((c, k) => k >= 4 ? c : "transparent"), () => 2.2);
+      g.restore();
+      g.beginPath();
+      for (let q = 0; q < M.n_dibujo; q++) {
+        if (D.pendAbs[q] <= 35) continue;
+        const a = D.off[q], b = D.off[q + 1];
+        g.moveTo(P.X(D.xy[2 * a]), P.Y(D.xy[2 * a + 1]));
+        for (let i = a + 1; i < b; i++) g.lineTo(P.X(D.xy[2 * i]), P.Y(D.xy[2 * i + 1]));
+      }
+      g.strokeStyle = CSS("--brasa"); g.lineWidth = 1.4; g.stroke();
+    }
+    animar ? revelar(cv, o, 2300) : lienzo(cv).g.drawImage(o, 0, 0, W, H);
+  }
+  vistas.fase2 = animar => alListo(() => MED_LISTO.then(() => {
+    if (MED && !cubMed) cubMed = cubos(MED.p, CORTES);
+    dibujar(animar); pintadaCon.fase2 = CIUDAD;
+  }));
+  entradas.fase2 = () => { if (pintadaCon.fase2 !== CIUDAD) vistas.fase2(true); };
+  addEventListener("resize", () => pintadaCon.fase2 && vistas.fase2(false));
+}
+
+// ═════════════════════════════════════════════════ fase 4: dos rutas sobre el mapa
+{
+  const cv = $("#cvRutas");
+  const BASE = { bog: "datos_bogota", med: "datos_medellin" };
+  let idx = Math.floor(Math.random() * 1000), par = null, animando = 0, cubMed = null;
+  // Medellín se carga la primera vez que se pide, con el mismo código que Bogotá
+  async function ciudadLista(c) {
+    if (c === "bog") { usarBogota(); return true; }
+    try {
+      const C = await G.cargar(() => {}, BASE.med);
+      G.usar(BASE.med);
+      await G.cargarCarro(C.meta.vehiculo_base || M.vehiculo_base);
+      G.usar(BASE.med);
+      if (!cubMed) cubMed = cubos(C.pendAbs, CORTES);
+      return true;
+    } catch (e) {
+      $("#datosPar").textContent = "No pude leer datos_medellin: corre de nuevo el empaquetador.";
+      return false;
+    }
+  }
+  function elegir() {
+    const ctl = G.D.control || [];
+    const quebrado = c => c.terreno === "ladera" || c.terreno === "cruzado";
+    let lista = ctl.filter(c => quebrado(c) && c.misma_ruta === false);
+    if (!lista.length) lista = ctl.filter(quebrado);
+    if (!lista.length) lista = ctl;
+    for (let t = 0; t < lista.length; t++) {
+      const c = lista[(idx++) % lista.length];
+      const corta = G.porDistancia(c.o, c.d), efic = G.porEnergia(c.o, c.d);
+      if (!corta || !efic) continue;
+      const igual = corta.aristas.length === efic.aristas.length && corta.aristas.every((e, i) => e === efic.aristas[i]);
+      if (igual && t < lista.length - 1) continue;
+      return { c, corta, efic, tc: G.trazo(corta.aristas), te: G.trazo(efic.aristas), ciudad: CIUDAD };
+    }
+    return null;
+  }
+  function dibujar() {
+    if (!par) return;
+    const W = cv.clientWidth, H = cv.clientHeight, D = G.D;
+    let a = 180, b = 90, c = -180, d = -90;
+    for (const [x, y] of [...par.tc, ...par.te]) { if (x < a) a = x; if (x > c) c = x; if (y < b) b = y; if (y > d) d = y; }
+    const mx = (c - a) * .28 + .004, my = (d - b) * .28 + .004;
+    const caja = [a - mx, b - my, c + mx, d + my];
+    const P = proyector(caja, W, H, 20);
+    const dentro = q => { const x = D.xy[2 * D.off[q]], y = D.xy[2 * D.off[q] + 1];
+      return x > caja[0] - mx && x < caja[2] + mx && y > caja[1] - my && y < caja[3] + my; };
+    const { o, g } = aparte(W, H);
+    g.globalAlpha = .75;
+    trazar(g, P, par.ciudad === "med" ? cubMed : RED.cubP, RAMPA_P, k => 1 + k * .25, dentro);
+    g.globalAlpha = 1;
+    const id = ++animando, t0 = performance.now(), dur = QUIETO ? 1 : 2600;
+    const linea = (gg, pts, k, color, ancho, brillo) => {
+      const n = Math.max(2, Math.floor(pts.length * k));
+      gg.beginPath(); gg.moveTo(P.X(pts[0][0]), P.Y(pts[0][1]));
+      for (let i = 1; i < n; i++) gg.lineTo(P.X(pts[i][0]), P.Y(pts[i][1]));
+      gg.lineCap = gg.lineJoin = "round";
+      if (brillo) { gg.save(); gg.shadowColor = color; gg.shadowBlur = 14; }
+      gg.strokeStyle = color; gg.lineWidth = ancho; gg.stroke();
+      if (brillo) gg.restore();
+    };
+    const lon = D.lon, lat = D.lat;
+    (function cuadro(t) {
+      if (id !== animando) return;
+      const k = Math.min(1, (t - t0) / dur);
+      const { g: v, W: w, H: hh } = lienzo(cv);
+      v.drawImage(o, 0, 0, w, hh);
+      linea(v, par.tc, k, CSS("--tinta2"), 3.2, false);
+      linea(v, par.te, k, CSS("--brasa"), 4.2, true);
+      for (const [n, txt] of [[par.c.o, "salida"], [par.c.d, "llegada"]]) {
+        const x = P.X(lon[n]), y = P.Y(lat[n]);
+        v.beginPath(); v.arc(x, y, 7, 0, 7); v.fillStyle = CSS("--noche"); v.fill();
+        v.lineWidth = 2.5; v.strokeStyle = CSS("--tinta"); v.stroke();
+        v.font = "500 12px 'Inter Tight', sans-serif"; v.fillStyle = CSS("--tinta");
+        v.fillText(txt, x + 12, y + 4);
+      }
+      if (k < 1) requestAnimationFrame(cuadro);
+    })(t0);
+  }
+  async function mostrar() {
+    const c0 = CIUDAD;
+    if (!(await ciudadLista(c0)) || c0 !== CIUDAD) return;
+    par = elegir();
+    if (!par) { animando++; lienzo(cv); $("#contextoPar").textContent = "";
+      $("#datosPar").textContent = `El paquete de ${CIU(CIUDAD).nombre} no trae viajes de control.`; return; }
+    const { c, corta, efic } = par;
+    const eC = G.energia(corta), eE = efic.energia, dC = G.metros(corta), dE = G.metros(efic);
+    const ahorro = eC > 0 ? (eC - eE) / eC * 100 : 0;
+    $("#datosPar").innerHTML = `
+      <div><span>terreno</span><b>${c.terreno} · ${c.banda}</b></div>
+      <div><span>distancia</span><b>${nf(dC / 1000, 2)} → ${nf(dE / 1000, 2)} km</b></div>
+      <div><span>energía</span><b>${nf(eC, 3)} → ${nf(eE, 3)} kWh</b></div>
+      <div><span>ahorro de energía</span><b style="color:var(--cian)">${nf(ahorro, 1)} %</b></div>
+      <div><span>recorrido de más</span><b>${nf((dE - dC) / Math.max(dC, 1) * 100, 1)} %</b></div>`;
+    let med = null, p90 = null, n = null;
+    if (CIUDAD === "bog") {
+      const r = (M.por_estrato || []).find(x => +x.k === 0 && x.terreno === c.terreno && x.banda === "todas (ponderado)");
+      if (r) { med = +r.ahorro_mediana_pct; p90 = +r.ahorro_p90_pct; n = +r.viajes; }
+    } else {
+      const r = TESIS.med.estratos[c.terreno];
+      if (r) { med = r.mediana; p90 = r.p90; n = r.viajes; }
+    }
+    $("#contextoPar").textContent = med != null ? `En los ${nf(n)} viajes sorteados en terreno ${c.terreno} de
+      ${CIU(CIUDAD).nombre}, el ahorro mediano es ${nf(med, 2)} % y uno de cada diez pasa de ${nf(p90, 1)} %.
+      Este es un caso, no el promedio.` : "";
+    dibujar();
+    setTimeout(encajar, 30);      // el texto del viaje cambia de alto: se vuelve a medir
+  }
+  $("#otroPar").onclick = () => alListo(mostrar);
+  vistas.rutas = () => alListo(() => { par = null; mostrar(); });
+  entradas.rutas = () => alListo(async () => {
+    if (!par || par.ciudad !== CIUDAD) { await mostrar(); pintadaCon.rutas = CIUDAD; }
+    else { await ciudadLista(CIUDAD); dibujar(); }
+  });
+  addEventListener("resize", () => par && escenas[actual]?.id === "rutas" && dibujar());
+}
+
+// ═════════════════════════════════════════════════ cotejo: lo copiado contra lo empaquetado
+const COTEJO = (() => {
+  const pe = M.por_estrato || [], c = TESIS.bog.cotejo;
+  const f = t => pe.find(r => +r.k === 0 && r.terreno === t && r.banda === "todas (ponderado)");
+  const al = (M.alcanzabilidad || []).filter(r => r.escenario === M.escenario);
+  const car = id => al.find(r => r.vehiculo === id);
+  const c1 = EST.filter(s => /^C1/.test(s.cat || "")).length;
+  const filas = [
+    ["Tramos dirigidos en la red oficial de Bogotá", TESIS.bog.tramos_red, M.n_aristas, 0],
+    ["Esquinas de la red oficial de Bogotá", TESIS.bog.esquinas_red, M.n_nodos, 0],
+    ["Error vertical σz de Bogotá (m)", TESIS.bog.sigma_z, M.sigma_z_m, .0005],
+    ["Estaciones de Bogotá", 52, EST.length, 0],
+    ["Estaciones confirmadas por las dos fuentes", 4, c1, 0],
+    ["Viajes en ladera que ahorran más de 5 % (k = 0)", c.k0_ladera_mas5, f("ladera") && +f("ladera").pct_ahorro_mayor_5, .05],
+    ["Viajes de Bogotá que ahorran más de 5 % (k = 0)", c.k0_ciudad_mas5, f("Bogota") && +f("Bogota").pct_ahorro_mayor_5, .05],
+    ["Baja del consumo en Bogotá, % (k = 0)", c.k0_baja, f("Bogota") && +f("Bogota").baja_intensidad_pct, .005],
+    ["Viajes con ruta distinta, % (k = 0)", c.k0_cambia, f("Bogota") && +f("Bogota").pct_ruta_cambia, .05],
+    ["Peor esquina para llegar, Dolphin (% de batería)", c.dolphin_peor_pct, car("byd_dolphin_449") && +car("byd_dolphin_449").pct_bateria_max, .005],
+    ["Kwid, esquinas alcanzables con 20 %, pesimista", c.kwid_20_pesimista, car("renault_kwid_etech") && +car("renault_kwid_etech").alcanzable_20pct_pesimista, .0005],
+  ];
+  if (M.medellin) filas.push(
+    ["Medellín: tramos en la red oficial", TESIS.med.tramos_red, M.medellin.n_tramos_red, 0],
+    ["Medellín: esquinas de la red oficial", TESIS.med.esquinas_red, M.medellin.esquinas_red, 0]);
+  return filas.map(([q, cuaderno, paquete, tol]) => ({ q, cuaderno, paquete,
+    pasa: paquete != null && Number.isFinite(+paquete) && Math.abs(+paquete - cuaderno) <= tol + 1e-9 }));
+})();
+COTEJO.filter(x => !x.pasa).forEach(x => console.warn("Cifra copiada que no cuadra con el paquete:", x));
+
+// ═════════════════════════════════════════════════ lo que deja el trabajo
+{
+  const nEstM = TESIS.med.estaciones.length;
+  const APORTES = [
+    [nf(EST.length + nEstM), "estaciones de carga, con su grado de confianza",
+      `${nf(EST.length)} en Bogotá y ${nf(nEstM)} en Medellín, cruzadas entre OpenStreetMap y OpenChargeMap y congeladas el ${TESIS.inventario_corte}.`],
+    [nf(TESIS.bog.tramos_red + TESIS.med.tramos_red), "tramos de calle con su pendiente",
+      `Las redes dirigidas de las dos ciudades, con la pendiente sacada de modelos LiDAR y un error vertical medido de ${nf(TESIS.bog.sigma_z, 3)} m en Bogotá.`],
+    [nf((M.carros || []).length), "carros con su consumo calle por calle",
+      "El mismo modelo físico en las dos ciudades, para comparar la ruta corta con la de mínimo consumo."],
+    ["2", "ciudades en un mismo mapa",
+      "La herramienta del final calcula en el navegador las dos rutas, la batería y el perfil de cualquier viaje en Bogotá o Medellín."],
+  ];
+  $("#aportesLista").innerHTML = APORTES.map(([n, t, p]) =>
+    `<div class="aporte"><span class="cifra">${n}</span><b>${t}</b><p>${p}</p></div>`).join("");
+  const pr = M.pruebas || [];
+  const fr = (a, b) => `${nf(a)}<small> de ${nf(b)}</small>`;
+  $("#pg2").innerHTML = fr(pr.filter(p => p.pasa).length, pr.length);
+  $("#pg4").innerHTML = fr(COTEJO.filter(x => x.pasa).length, COTEJO.length);
+  let hecho = false;
+  entradas.aportes = () => alListo(() => {
+    if (hecho) return; hecho = true;
+    const cs = G.D.control.filter(c => c.dist_corta_m > 0).slice(0, 12);
+    if (!cs.length) { $("#pg1").textContent = "—"; return; }
+    let bien = 0;
+    for (const c of cs) {
+      const r = G.porDistancia(c.o, c.d), e = G.porEnergia(c.o, c.d);
+      const dd = r ? Math.abs(r.costo - c.dist_corta_m) / c.dist_corta_m * 100 : 99;
+      const ok = dd < .5 && (!e || !c.costo_efic_kwh || Math.abs(e.costo - c.costo_efic_kwh) < .002
+        || Math.abs(e.costo - c.costo_efic_kwh) / Math.abs(c.costo_efic_kwh) * 100 < .5);
+      if (ok) bien++;
+    }
+    $("#pg1").innerHTML = fr(bien, cs.length);
+  });
+}
+
+// ═════════════════════════════════════════════════ limitaciones
+{
+  const b = TESIS.bog, m = TESIS.med;
+  const L = [
+    ["El modelo de consumo no se pudo comprobar en pendientes del 8 al 15 %",
+      "La única telemetría abierta de eléctricos (VED y eVED) es de Ann Arbor, terreno plano. La capa de arrancar y frenar también se calibró allí, no con baterías medidas ni con datos de Bogotá.",
+      "Anteproyecto, sección 5.2 · constantes_d1"],
+    ["En Medellín el error vertical no se midió",
+      `No hay suficientes vértices del IGAC con coordenada calculada en la ciudad. La ficha oficial declara ${nf(m.sigma_ficha, 2)} m; la rama oficial usa ${nf(m.sigma_z, 3)} m.`,
+      "constantes_d1, ramas de pendiente de Medellín"],
+    ["Donde el terreno no tiene dato, la pendiente es estimada",
+      `En el borde el error típico es de ${nf(b.borde[0], 2)} a ${nf(b.borde[1], 2)} puntos, con una cola grande. Es el ${nf(b.sin_altura.pct, 2)} % de los tramos de Bogotá, pero pesa en Usme rural: con el otro método su peor esquina pasa de 8,1 % a 9,9 % de batería.`,
+      "Cuaderno D4, celdas 8c y 15c"],
+    ["Los tramos de más de 35 % se revisaron a ojo",
+      `Street View, no una medición. En Medellín ${m.street.escalera} de las ${m.street.revisadas} calles revisadas son escaleras y siguen en la red oficial; quitarlas cambia el consumo como máximo ${nf(m.sin_escaleras.cambio_max_pct, 3)} %.`,
+      "Cuadernos D4 celda 13 y D4M celda 11b"],
+    ["Las dos fuentes de estaciones no son independientes",
+      `OpenStreetMap y OpenChargeMap se alimentan entre sí, y el inventario es el congelado el ${TESIS.inventario_corte}. En Medellín, las esquinas más caras del occidente rural cargan en una estación de OSM sin operador ni verificación.`,
+      "Anteproyecto, sección 3.4 · D4M, supuesto 3"],
+    ["Arrancar y frenar se reparten parejo por kilómetro",
+      `Concentrarlo en semáforos y giros es una sensibilidad: de día, usar la ruta principal pierde entre ${nf(b.eventos_mediana_dia[0], 2)} % y ${nf(b.eventos_mediana_dia[1], 2)} % de mediana frente a la que elegiría esa variante.`,
+      "Cuaderno D4, celda 15d"],
+    ["El ahorro se mide sobre los viajes que gastan energía",
+      `Se excluyen los viajes que en la ruta corta van netamente en bajada: ${nf(b.excluidos)} de ${nf(b.viajes)} en Bogotá y ${nf(m.excluidos)} de ${nf(m.viajes)} en Medellín.`,
+      "Cuadernos D4 celda 15f y D4M celda 20b"],
+    ["El trabajo no optimiza la red de carga",
+      "Usa las estaciones existentes como restricción. Ubicar estaciones nuevas, predecir la demanda de carga y modelar el tráfico dinámico quedan fuera del alcance.",
+      "Anteproyecto, sección 2.1"],
+  ];
+  $("#limites").innerHTML = L.map(([t, p, f], i) => `<div class="limite"><i>${i + 1}</i><div><b>${t}</b><p>${p}</p><small>${f}</small></div></div>`).join("");
+}
+
+// ═════════════════════════════════════════════════ hallazgos y métricas
+{
+  const pe = M.por_estrato || [];
+  const f = t => pe.find(r => +r.k === 0 && r.terreno === t && r.banda === "todas (ponderado)") || {};
+  const al = (M.alcanzabilidad || []).filter(r => r.escenario === M.escenario);
+  const dol = al.find(r => r.vehiculo === "byd_dolphin_449") || {};
+  const b = TESIS.bog, m = TESIS.med, me = m.estratos;
+  const bBaja = +f("Bogota").baja_intensidad_pct, bCiudad = f("Bogota");
+  const duo = (vb, vm, ub, um, sb, sm) => `<div class="duo">
+    <div style="--c:var(--bog)"><span class="cifra">${vb}<small>${ub}</small></span><span>Bogotá${sb ? " · " + sb : ""}</span></div>
+    <div style="--c:var(--med)"><span class="cifra">${vm}<small>${um}</small></span><span>Medellín${sm ? " · " + sm : ""}</span></div></div>`;
+  const H = [
+    ["Rutear por energía baja el consumo de toda la ciudad, no sólo el de algunos viajes",
+      duo("−" + nf(bBaja, 2), "−" + nf(me.ciudad.baja, 2), "%", "%"),
+      `kWh por cada 100 km, ponderado a la ciudad, BYD Dolphin al mediodía. La ruta de mínimo consumo es distinta de la
+       corta en ${nf(+bCiudad.pct_ruta_cambia, 1)} % de los viajes de Bogotá y ${nf(me.ciudad.cambia, 1)} % de los de Medellín.`],
+    ["En Bogotá el ahorro se concentra en la ladera; en Medellín aparece también en el valle",
+      duo(nf(+f("ladera").pct_ahorro_mayor_5, 1), nf(me.ladera.mas5, 1), "%", "%",
+        `ladera; ${nf(+f("plano").pct_ahorro_mayor_5, 1)} % en plano`, `ladera; ${nf(me.plano.mas5, 1)} % en el valle`),
+      "Viajes que ahorran más del 5 % de energía. Cada ciudad con su propio corte de ladera."],
+    ["Llegar a cargar no es el problema; volver de la estación sí lo es",
+      duo(nf(b.volver.max_pct, 1), nf(m.volver.max_pct, 1), "%", "%", `volver; llegar ${nf(b.llegar.max_pct, 1)} %`, `volver; llegar ${nf(m.llegar.max_pct, 1)} %`),
+      `Batería del Dolphin en la peor esquina para volver. Volver cuesta más que llegar en ${nf(b.volver_mas_pct, 1)} % de las
+       esquinas de Bogotá y ${nf(m.volver_mas_pct, 1)} % de las de Medellín.`],
+    ["Con 20 % de batería el Dolphin llega a cargar desde cualquier esquina; ir y volver no siempre alcanza",
+      duo(nf(b.trayecto[2], 1), nf(m.trayecto[2], 1), "%", "%", "van y vuelven con 20 %", "van y vuelven con 20 %"),
+      `Con 20 % llega a una estación el ${nf(+dol.alcanzable_20pct, 0)} % de las esquinas de Bogotá y el 100 % de las de
+       Medellín. Con 25 %, van y vuelven el ${nf(b.trayecto[3], 1)} % y el ${nf(m.trayecto[3], 1)} % de los viajes.`],
+  ];
+  $("#hallazgosLista").classList.add("cuatro");
+  $("#hallazgosLista").innerHTML = H.map(([t, d, p]) => `<div class="hallazgo"><h3>${t}</h3>${d}<p>${p}</p></div>`).join("");
+
+  const mz = M.medellin;
+  const filas = [
+    ["Red y terreno", [
+      ["Modelo de terreno", "MDT 2020, 50 cm", "DTM-LiDAR 2021, 1 m"],
+      ["Tramos dirigidos en la red oficial", nf(M.n_aristas), nf(m.tramos_red)],
+      ["Esquinas", nf(M.n_nodos), nf(m.esquinas_red)],
+      ["Kilómetros de calles", nf(M.km_red, 1), nf(m.km_red, 1)],
+      ["Desnivel de la red", RED ? nf(RED.z1 - RED.z0, 0) + " m" : "—", mz ? nf(mz.z_max - mz.z_min, 0) + " m" : "—"]]],
+    ["Pendiente", [
+      ["Error vertical σz", nf(b.sigma_z, 3) + " m, medido", nf(m.sigma_z, 3) + " m, no medido"],
+      ["Tramos sin dato del terreno", nf(b.sin_altura.pct, 2) + " %", `${m.sin_altura.tramos} de ${nf(m.tramos)}`],
+      ["Tramos de más de 35 % en la red", nf(M.aristas_extremas), nf(m.extremas_red)],
+      ["Rutas que pasan por uno: sin castigo → k = 50", `${nf(b.k_curva[0], 1)} → ${nf(b.k_curva[6], 1)} %`, `${nf(m.k_curva[0], 1)} → ${nf(m.k_curva[6], 1)} %`]]],
+    ["Estaciones", [
+      ["En el inventario", nf(EST.length), nf(m.estaciones.length)],
+      ["Confirmadas por las dos fuentes", nf(EST.filter(s => /^C1/.test(s.cat || "")).length), nf(m.estaciones.filter(s => /^C1/.test(s.cat)).length)],
+      ["Distancia mediana a la red", nf(b.enganche.mediana, 1) + " m", nf(m.enganche.mediana, 1) + " m"]]],
+    ["Rutas · Dolphin, mediodía, sin castigo, ponderado", [
+      ["Viajes sorteados", nf(b.viajes), nf(m.viajes)],
+      ["Con ruta distinta de la más corta", nf(+bCiudad.pct_ruta_cambia, 1) + " %", nf(me.ciudad.cambia, 1) + " %"],
+      ["Ahorran más del 5 %", nf(+bCiudad.pct_ahorro_mayor_5, 1) + " %", nf(me.ciudad.mas5, 1) + " %"],
+      ["kWh/100 km: corta → mínimo consumo", `${nf(+bCiudad.intensidad_corta_kwh_100km, 3)} → ${nf(+bCiudad.intensidad_eficiente_kwh_100km, 3)}`,
+        `${nf(m.consumo.corta, 3)} → ${nf(m.consumo.eficiente, 3)}`]]],
+    ["Alcanzabilidad · Dolphin", [
+      ["Esquinas que llegan a cargar con 20 %", nf(+dol.alcanzable_20pct, 1) + " %", nf(m.alcance[0].alcanzable_20pct, 1) + " %"],
+      ["Peor esquina para llegar", nf(+dol.pct_bateria_max, 2) + " %", nf(m.llegar.max_pct, 2) + " %"],
+      ["Peor esquina para volver", nf(b.volver.max_pct, 2) + " %", nf(m.volver.max_pct, 2) + " %"],
+      ["Viajes que van y vuelven con 20 %", nf(b.trayecto[2], 1) + " %", nf(m.trayecto[2], 1) + " %"]]],
+    ["Verificación", [
+      ["Física de ida y vuelta (Wh por m)", `${nf(b.fisica.wh_m, 2)} · R² ${nf(b.fisica.r2, 3)}`, `${nf(m.fisica.wh_m, 2)} · R² ${nf(m.fisica.r2, 3)}`],
+      ["Otro algoritmo, misma energía", `±${nf(b.networkx_dif_wh, 3)} Wh`, `±${nf(m.networkx_dif_wh, 3)} Wh`]]],
+  ];
+  const tabla = ([cap, rs]) => `<table><caption>${cap}</caption>
+    <tr><th></th><th><i style="background:var(--bog)"></i>Bogotá</th><th><i style="background:var(--med)"></i>Medellín</th></tr>
+    ${rs.map(([q, x, y]) => `<tr><td>${q}</td><td>${x}</td><td>${y}</td></tr>`).join("")}</table>`;
+  const izq = filas.slice(0, 3), der = filas.slice(3);
+  $("#ficha").innerHTML = `<div>${izq.map(tabla).join("")}</div><div>${der.map(tabla).join("")}</div>`;
+  alListo(() => {     // el desnivel de Bogotá sale de la red, que llega después
+    const td = [...document.querySelectorAll("#ficha td")].find(t => t.textContent === "Desnivel de la red");
+    if (td) td.nextElementSibling.textContent = nf(RED.z1 - RED.z0, 0) + " m";
+  });
+  $("#irFinal").onclick = () => $("#final").scrollIntoView();
+}
+
+// ═════════════════════════════════════════════════ final: Bogotá completa
+{
+  const LOCAL = new URLSearchParams(location.search).has("local");
+  let mapa = null, listoMapa = false, carroSel = M.vehiculo_base;
+  let A = null, B = null, esperando = "A", ultimo = null, mkA = null, mkB = null, mkCarro = null, anim = 0;
+  const BOG = "datos_bogota", MEDB = "datos_medellin";
+  let ciudadA = null, ciudadB = null, ESTM = [];
+  const nombreCiudad = b => b === MEDB ? "Medellín" : "Bogotá";
+  const vacio = () => ({ type: "FeatureCollection", features: [] });
+  const linea = c => c.length ? { type: "Feature", properties: {}, geometry: { type: "LineString", coordinates: c } } : vacio();
+
+  // ── los doce carros como botones, ordenados por batería
+  const flota = (M.carros || []).slice().sort((a, b) => (a.bateria_kwh ?? 999) - (b.bateria_kwh ?? 999));
+  const corto = n => String(n).replace(/\s*\(.*\)\s*$/, "");
+  $("#carros").innerHTML = flota.map(c => `<button data-id="${c.id}" aria-pressed="${c.id === carroSel}">
+    <b>${corto(c.nombre || c.id)}</b>${c.bateria_kwh ? nf(c.bateria_kwh, 1) + " kWh de batería" : "batería sin dato"}</button>`).join("");
+  $("#carros").addEventListener("click", async e => {
+    const b = e.target.closest("button"); if (!b) return;
+    carroSel = b.dataset.id;
+    $("#carros").querySelectorAll("button").forEach(x => x.setAttribute("aria-pressed", x === b));
+    if (A != null && B != null && ultimo) calcular();
+  });
+  $("#bateria").addEventListener("input", e => {
+    $("#bateriaTxt").textContent = e.target.value + " %";
+    if (ultimo) pintarBateria();
+  });
+
+  // ── salida y llegada
+  function estadoPuntos() {
+    const bA = $("#btnA"), bB = $("#btnB");
+    bA.className = "punto-btn " + (esperando === "A" ? "espera" : A != null ? "listo" : "");
+    bB.className = "punto-btn " + (esperando === "B" ? "espera" : B != null ? "listo" : "");
+    bA.innerHTML = `<b>Salida</b>${A != null ? "en " + nombreCiudad(ciudadA) : esperando === "A" ? "toca el mapa" : "—"}`;
+    bB.innerHTML = `<b>Llegada</b>${B != null ? "en " + nombreCiudad(ciudadB) : esperando === "B" ? "toca el mapa" : "después"}`;
+    $("#calcular").disabled = !(A != null && B != null);
+  }
+  $("#btnA").onclick = () => { esperando = "A"; estadoPuntos(); };
+  $("#btnB").onclick = () => { esperando = "B"; estadoPuntos(); };
+  function marca(n, txt, viejo, base) {
+    viejo?.remove();
+    G.usar(base);
+    const el = document.createElement("div"); el.className = "marcador-punto"; el.textContent = txt;
+    return new maplibregl.Marker({ element: el, anchor: "bottom", offset: [0, -6] })
+      .setLngLat([G.D.lon[n], G.D.lat[n]]).addTo(mapa);
+  }
+  $("#limpiar").onclick = () => {
+    A = B = null; ciudadA = ciudadB = null; esperando = "A"; ultimo = null; anim++;
+    mkA?.remove(); mkB?.remove(); mkCarro?.remove(); mkA = mkB = mkCarro = null;
+    if (listoMapa) { mapa.getSource("r-corta").setData(vacio()); mapa.getSource("r-efic").setData(vacio()); }
+    $("#resultadoFinal").hidden = true; estadoPuntos();
+  };
+
+  // ── el mapa, sólo cuando se llega al final
+  function montar() {
+    if (mapa) return;
+    const [a, b, c, d] = RED.caja;
+    mapa = new maplibregl.Map({
+      container: "mapaFinal",
+      style: LOCAL ? { version: 8, sources: {}, layers: [{ id: "f", type: "background", paint: { "background-color": CSS("--noche") } }] } : {
+        version: 8,
+        glyphs: "https://cdn.jsdelivr.net/gh/kylebarron/openmaptiles-fonts/fonts/{fontstack}/{range}.pbf",
+        sources: {
+          base: { type: "vector", url: "https://tiles.openfreemap.org/planet" },
+          relieve: { type: "raster-dem", tiles: ["https://s3.amazonaws.com/elevation-tiles-prod/terrarium/{z}/{x}/{y}.png"],
+            encoding: "terrarium", tileSize: 256, maxzoom: 13, attribution: "Terrain Tiles · AWS Open Data" }
+        },
+        layers: [
+          { id: "fondo", type: "background", paint: { "background-color": CSS("--noche") } },
+          { id: "relieve", type: "hillshade", source: "relieve", paint: { "hillshade-shadow-color": "#04080f",
+            "hillshade-highlight-color": "#2b4360", "hillshade-accent-color": "#0a1420", "hillshade-exaggeration": .6 } },
+          { id: "agua", type: "fill", source: "base", "source-layer": "water", paint: { "fill-color": "#0c1d2e" } },
+          { id: "vias", type: "line", source: "base", "source-layer": "transportation", minzoom: 11,
+            paint: { "line-color": "#15253a", "line-width": ["interpolate", ["linear"], ["zoom"], 11, .4, 16, 2] } },
+          { id: "sitios", type: "symbol", source: "base", "source-layer": "place",
+            filter: ["in", ["get", "class"], ["literal", ["city", "town", "village", "suburb", "neighbourhood"]]],
+            layout: { "text-field": ["get", "name"], "text-font": ["Noto Sans Regular"],
+              "text-size": ["interpolate", ["linear"], ["zoom"], 10, 10, 15, 13], "text-letter-spacing": .04 },
+            paint: { "text-color": "#93a6ba", "text-halo-color": CSS("--noche"), "text-halo-width": 1.6 } }
+        ]
+      },
+      bounds: [[a, b], [c, d]],
+      fitBoundsOptions: { padding: { top: 70, bottom: 40, left: innerWidth > 900 ? 440 : 30, right: 60 } },
+      attributionControl: { compact: true }, maxPitch: 60
+    });
+    mapa.addControl(new maplibregl.NavigationControl({ showCompass: false }), "bottom-right");
+    mapa.on("load", capas);
+    window.__mapaFinal = mapa; window.__est = EST;   // para inspeccionar desde la consola
+    mapa.on("click", e => {
+      if (!listoMapa) return;
+      const capasEst = ["est", "est-med"].filter(i => mapa.getLayer(i));
+      if (mapa.queryRenderedFeatures(e.point, { layers: capasEst }).length) return;   // sobre una estación no se marca punto
+      // la esquina más cercana en cada ciudad cargada; gana la más cercana de las dos
+      let mejor = null;
+      for (const base of [BOG, MEDB]) {
+        if (!G.cargada(base)) continue;
+        G.usar(base);
+        const c = G.cercano(e.lngLat.lng, e.lngLat.lat);
+        if (!mejor || c.m < mejor.m) mejor = { ...c, base };
+      }
+      if (!mejor) return;
+      const otra = esperando === "A" ? ciudadB : ciudadA;
+      if (otra && otra !== mejor.base) {          // la otra punta quedó en la otra ciudad: se suelta
+        if (esperando === "A") { B = null; ciudadB = null; mkB?.remove(); mkB = null; }
+        else { A = null; ciudadA = null; mkA?.remove(); mkA = null; }
+        limpiarRutas();
+      }
+      if (esperando === "A") { A = mejor.nodo; ciudadA = mejor.base; mkA = marca(A, "salida", mkA, ciudadA); esperando = B == null ? "B" : null; }
+      else { B = mejor.nodo; ciudadB = mejor.base; mkB = marca(B, "llegada", mkB, ciudadB); esperando = A == null ? "A" : null; }
+      estadoPuntos();
+      if (A != null && B != null && ultimo) calcular();
+    });
+  }
+  function capas() {
+    const D = G.D;
+    // maxzoom 13 + tolerance 1: no se vuelve a teselar toda la ciudad en cada zoom
+    mapa.addSource("red", { type: "geojson", data: G.redGeoJSON(), maxzoom: 13, tolerance: 1, buffer: 16 });
+    const colorP = ["interpolate", ["linear"], ["get", "p"], ...CORTES.flatMap((v, i) => [v, RAMPA_P[i]])];
+    mapa.addLayer({ id: "red", type: "line", source: "red", layout: { "line-cap": "round", "line-join": "round" },
+      paint: { "line-color": colorP, "line-opacity": .92,
+        "line-width": ["interpolate", ["linear"], ["zoom"], 10, ["*", ["get", "w"], .45], 13, ["*", ["get", "w"], 1],
+          16, ["*", ["get", "w"], 2.6], 18, ["*", ["get", "w"], 6]] } });
+    mapa.addLayer({ id: "red-extremas", type: "line", source: "red", filter: [">", ["get", "p"], 35],
+      paint: { "line-color": CSS("--brasa"), "line-width": ["interpolate", ["linear"], ["zoom"], 10, 1, 16, 3.5] } });
+    // El borde de Bogotá, y sólo ese: sale de tu archivo de límites, no del mapa base.
+    fetch("datos_bogota/limite.json").then(r => r.ok ? r.json() : null).then(gj => {
+      if (!gj) { document.getElementById("leyLimite")?.remove(); return; }
+      mapa.addSource("limite", { type: "geojson", data: gj });
+      mapa.addLayer({ id: "limite-halo", type: "line", source: "limite",
+        paint: { "line-color": "#eef2f6", "line-opacity": .12, "line-blur": 4,
+          "line-width": ["interpolate", ["linear"], ["zoom"], 8, 5, 13, 10] } }, "red");
+      mapa.addLayer({ id: "limite", type: "line", source: "limite", layout: { "line-join": "round" },
+        paint: { "line-color": "#dfe7ef", "line-opacity": .85, "line-dasharray": [4, 2.5],
+          "line-width": ["interpolate", ["linear"], ["zoom"], 8, 1.2, 13, 2.2] } }, "red");
+    }).catch(() => document.getElementById("leyLimite")?.remove());
+    // estaciones, con una línea punteada hasta la esquina de la red donde se enganchan
+    mapa.addSource("enganche", { type: "geojson", data: { type: "FeatureCollection", features: EST.map(s => ({
+      type: "Feature", properties: {}, geometry: { type: "LineString", coordinates: [s.p, [D.lon[s.nodo], D.lat[s.nodo]]] } })) } });
+    mapa.addLayer({ id: "enganche", type: "line", source: "enganche", minzoom: 13,
+      paint: { "line-color": CSS("--tinta2"), "line-width": 1, "line-dasharray": [1.5, 1.5] } });
+    mapa.addSource("est", { type: "geojson", data: { type: "FeatureCollection", features: EST.map((s, i) => ({
+      type: "Feature", id: i, properties: { n: s.n, cat: s.cat, src: s.src, dm: s.dm },
+      geometry: { type: "Point", coordinates: s.p } })) } });
+    mapa.addLayer({ id: "est-halo", type: "circle", source: "est", paint: { "circle-color": CSS("--cian"),
+      "circle-radius": ["interpolate", ["linear"], ["zoom"], 10, 7, 15, 16], "circle-opacity": .18, "circle-blur": .8 } });
+    mapa.addLayer({ id: "est", type: "circle", source: "est", paint: { "circle-color": CSS("--noche"),
+      "circle-radius": ["interpolate", ["linear"], ["zoom"], 10, 3.4, 15, 7], "circle-stroke-color": CSS("--tinta"),
+      "circle-stroke-width": ["interpolate", ["linear"], ["zoom"], 10, 1.6, 15, 2.6] } });
+    // rutas: la corta en neutro, la eficiente en brasa con un halo
+    mapa.addSource("r-corta", { type: "geojson", data: vacio() });
+    mapa.addSource("r-efic", { type: "geojson", data: vacio() });
+    mapa.addLayer({ id: "r-corta", type: "line", source: "r-corta", layout: { "line-cap": "round", "line-join": "round" },
+      paint: { "line-color": CSS("--tinta2"), "line-width": ["interpolate", ["linear"], ["zoom"], 10, 3, 16, 7], "line-opacity": .95 } });
+    mapa.addLayer({ id: "r-efic-halo", type: "line", source: "r-efic", layout: { "line-cap": "round", "line-join": "round" },
+      paint: { "line-color": CSS("--brasa"), "line-width": ["interpolate", ["linear"], ["zoom"], 10, 10, 16, 20], "line-opacity": .22, "line-blur": 6 } });
+    mapa.addLayer({ id: "r-efic", type: "line", source: "r-efic", layout: { "line-cap": "round", "line-join": "round" },
+      paint: { "line-color": CSS("--brasa"), "line-width": ["interpolate", ["linear"], ["zoom"], 10, 3.6, 16, 8] } });
+
+    // Los detalles de la estación aparecen con sólo pasar el cursor, y se van al salir.
+    const ficha = new maplibregl.Popup({ offset: 14, maxWidth: "300px", closeButton: false, closeOnClick: false });
+    let sobre = -1;
+    mapa.on("mousemove", "est", e => {
+      const i = e.features[0].id;
+      mapa.getCanvas().style.cursor = "pointer";
+      if (i === sobre) return;
+      sobre = i;
+      ficha.setLngLat(EST[i].p).setHTML(fichaEstacion(EST[i])).addTo(mapa);
+    });
+    mapa.on("mouseleave", "est", () => { sobre = -1; ficha.remove(); mapa.getCanvas().style.cursor = ""; });
+    listoMapa = true;
+    capasMedellin(colorP);
+  }
+  function limpiarRutas() {
+    if (!listoMapa) return;
+    anim++; mkCarro?.remove(); mkCarro = null; ultimo = null;
+    mapa.getSource("r-corta").setData(vacio()); mapa.getSource("r-efic").setData(vacio());
+    $("#resultadoFinal").hidden = true;
+  }
+  // Medellín se carga detrás de Bogotá, con el mismo código y el mismo formato de datos.
+  async function capasMedellin(colorP) {
+    let C;
+    try { C = await G.cargar(() => {}, MEDB); }
+    catch (err) { console.warn("Medellín no se cargó:", err.message); $("#irMed").hidden = true; return; }
+    const enUso = G.D.base; G.usar(MEDB);
+    const red = G.redGeoJSON(); G.usar(enUso || BOG);
+    ESTM = C.estaciones || [];
+    mapa.addSource("red-med", { type: "geojson", data: red, maxzoom: 13, tolerance: 1, buffer: 16 });
+    mapa.addLayer({ id: "red-med", type: "line", source: "red-med", layout: { "line-cap": "round", "line-join": "round" },
+      paint: { "line-color": colorP, "line-opacity": .92,
+        "line-width": ["interpolate", ["linear"], ["zoom"], 10, ["*", ["get", "w"], .45], 13, ["*", ["get", "w"], 1],
+          16, ["*", ["get", "w"], 2.6], 18, ["*", ["get", "w"], 6]] } }, "r-corta");
+    mapa.addLayer({ id: "red-med-extremas", type: "line", source: "red-med", filter: [">", ["get", "p"], 35],
+      paint: { "line-color": CSS("--brasa"), "line-width": ["interpolate", ["linear"], ["zoom"], 10, 1, 16, 3.5] } }, "r-corta");
+    fetch(`${MEDB}/limite.json`).then(r => r.ok ? r.json() : null).then(gj => {
+      if (!gj) return;
+      mapa.addSource("limite-med", { type: "geojson", data: gj });
+      mapa.addLayer({ id: "limite-med-halo", type: "line", source: "limite-med",
+        paint: { "line-color": "#eef2f6", "line-opacity": .12, "line-blur": 4,
+          "line-width": ["interpolate", ["linear"], ["zoom"], 8, 5, 13, 10] } }, "red-med");
+      mapa.addLayer({ id: "limite-med", type: "line", source: "limite-med", layout: { "line-join": "round" },
+        paint: { "line-color": "#dfe7ef", "line-opacity": .85, "line-dasharray": [4, 2.5],
+          "line-width": ["interpolate", ["linear"], ["zoom"], 8, 1.2, 13, 2.2] } }, "red-med");
+    }).catch(() => {});
+    mapa.addSource("enganche-med", { type: "geojson", data: { type: "FeatureCollection", features: ESTM.map(s => ({
+      type: "Feature", properties: {}, geometry: { type: "LineString", coordinates: [s.p, [C.lon[s.nodo], C.lat[s.nodo]]] } })) } });
+    mapa.addLayer({ id: "enganche-med", type: "line", source: "enganche-med", minzoom: 13,
+      paint: { "line-color": CSS("--tinta2"), "line-width": 1, "line-dasharray": [1.5, 1.5] } }, "r-corta");
+    mapa.addSource("est-med", { type: "geojson", data: { type: "FeatureCollection", features: ESTM.map((s, i) => ({
+      type: "Feature", id: i, properties: { n: s.n }, geometry: { type: "Point", coordinates: s.p } })) } });
+    mapa.addLayer({ id: "est-med-halo", type: "circle", source: "est-med", paint: { "circle-color": CSS("--cian"),
+      "circle-radius": ["interpolate", ["linear"], ["zoom"], 10, 7, 15, 16], "circle-opacity": .18, "circle-blur": .8 } });
+    mapa.addLayer({ id: "est-med", type: "circle", source: "est-med", paint: { "circle-color": CSS("--noche"),
+      "circle-radius": ["interpolate", ["linear"], ["zoom"], 10, 3.4, 15, 7], "circle-stroke-color": CSS("--tinta"),
+      "circle-stroke-width": ["interpolate", ["linear"], ["zoom"], 10, 1.6, 15, 2.6] } });
+    const ficha = new maplibregl.Popup({ offset: 14, maxWidth: "300px", closeButton: false, closeOnClick: false });
+    let sobre = -1;
+    mapa.on("mousemove", "est-med", e => {
+      const i = e.features[0].id;
+      mapa.getCanvas().style.cursor = "pointer";
+      if (i === sobre) return;
+      sobre = i;
+      ficha.setLngLat(ESTM[i].p).setHTML(fichaEstacion(ESTM[i])).addTo(mapa);
+    });
+    mapa.on("mouseleave", "est-med", () => { sobre = -1; ficha.remove(); mapa.getCanvas().style.cursor = ""; });
+    // respetar lo que ya esté apagado
+    if ($("#capaPend").getAttribute("aria-pressed") === "false") ["red-med", "red-med-extremas"].forEach(i => mapa.setLayoutProperty(i, "visibility", "none"));
+    if ($("#capaEst").getAttribute("aria-pressed") === "false") ["est-med", "est-med-halo", "enganche-med"].forEach(i => mapa.setLayoutProperty(i, "visibility", "none"));
+  }
+  // ir a una ciudad
+  const cajaDe = base => {
+    const C = G.cargada(base); if (!C) return null;
+    let a = 180, b = 90, c = -180, d = -90;
+    for (let i = 0; i < C.lon.length; i++) { const x = C.lon[i], y = C.lat[i];
+      if (x < a) a = x; if (x > c) c = x; if (y < b) b = y; if (y > d) d = y; }
+    return [[a, b], [c, d]];
+  };
+  for (const [btn, base] of [["#irBog", BOG], ["#irMed", MEDB]]) {
+    $(btn).onclick = () => {
+      const caja = cajaDe(base); if (!caja || !mapa) return;
+      mapa.fitBounds(caja, { padding: { top: 70, bottom: 40, left: innerWidth > 900 ? 440 : 30, right: 60 }, duration: 2200 });
+    };
+  }
+  // capas encendibles
+  for (const [btn, ids] of [["#capaPend", ["red", "red-extremas", "red-med", "red-med-extremas"]],
+                            ["#capaEst", ["est", "est-halo", "enganche", "est-med", "est-med-halo", "enganche-med"]]]) {
+    $(btn).onclick = () => {
+      const on = $(btn).getAttribute("aria-pressed") !== "true";
+      $(btn).setAttribute("aria-pressed", on);
+      if (listoMapa) ids.filter(i => mapa.getLayer(i)).forEach(i => mapa.setLayoutProperty(i, "visibility", on ? "visible" : "none"));
+    };
+  }
+  $("#rampaMapa").innerHTML = RAMPA_P.map(c => `<i style="background:${c}"></i>`).join("");
+
+  // La ficha muestra lo que el paquete trae de cada estación: nada más.
+  const FUENTE = { osm: "OpenStreetMap", ocm: "OpenChargeMap" };
+  function fichaEstacion(s) {
+    const det = (s.detalles || []).slice(0, 9).map(d =>
+      `<div class="fd"><span>${d.campo}</span><b>${d.valor}</b></div>`).join("");
+    return `<div class="ficha-est"><strong>${s.n}</strong>
+      <em>${String(s.cat).replace(/^C\d\s*/, "")}</em>${det}
+      <div class="fd"><span>Coordenada tomada de</span><b>${FUENTE[s.src] || s.src}</b></div>
+      <div class="fd"><span>Distancia a la red de calles</span><b>${nf(+s.dm, 0)} m</b></div>
+      ${det ? "" : '<small>El paquete no trae más atributos de esta estación.</small>'}</div>`;
+  }
+
+  // ── calcular
+  $("#calcular").onclick = calcular;
+  async function calcular() {
+    if (A == null || B == null || !listoMapa) return;
+    if (ciudadA !== ciudadB) { $("#resultadoFinal").hidden = false; $("#comparar").innerHTML = "";
+      $("#veredicto").textContent = "La salida y la llegada tienen que estar en la misma ciudad."; return; }
+    G.usar(ciudadA);
+    await G.cargarCarro(carroSel);
+    G.usar(ciudadA);
+    const corta = G.porDistancia(A, B), efic = G.porEnergia(A, B);
+    $("#resultadoFinal").hidden = false;
+    if (!corta || !efic) {
+      $("#comparar").innerHTML = ""; $("#veredicto").textContent =
+        "No hay camino entre esas dos esquinas dentro de la red. Pasa a veces en los bordes de la ciudad.";
+      return;
+    }
+    const tc = G.trazo(corta.aristas), te = G.trazo(efic.aristas);
+    mapa.getSource("r-corta").setData(linea(tc));
+    mapa.getSource("r-efic").setData(linea(te));
+    const eC = G.energia(corta), eE = efic.energia, dC = G.metros(corta), dE = G.metros(efic);
+    ultimo = { corta, efic, te, eC, eE, dC, dE };
+    $("#comparar").innerHTML = `
+      <div><small><i style="background:var(--tinta2)"></i>la más corta</small><b>${nf(dC / 1000, 2)} km</b><span>${nf(eC, 3)} kWh</span></div>
+      <div><small><i style="background:var(--brasa)"></i>la más eficiente</small><b>${nf(dE / 1000, 2)} km</b><span>${nf(eE, 3)} kWh</span></div>`;
+    const igual = corta.aristas.length === efic.aristas.length && corta.aristas.every((e, i) => e === efic.aristas[i]);
+    const ahorro = eC > 0 ? (eC - eE) / eC * 100 : 0;
+    $("#veredicto").innerHTML = igual ? "Aquí las dos rutas coinciden: el terreno no obliga a desviarse."
+      : `La ruta eficiente gasta <b>${nf(ahorro, 1)} % menos energía</b> a cambio de ${nf((dE - dC) / 1000, 2)} km más.`;
+    $("#veredicto").insertAdjacentHTML("afterbegin", `<span style="display:block;font-size:.76rem;color:var(--tinta3)">${nombreCiudad(ciudadA)}</span>`);
+    pintarBateria();
+    dibujarPerfil(efic);
+    // el panel se desplaza solo hasta el resultado, sin mover la página
+    const cuerpo = document.querySelector(".tablero .cuerpo");
+    cuerpo.scrollTo({ top: $("#resultadoFinal").offsetTop - 8, behavior: QUIETO ? "auto" : "smooth" });
+    const caja = new maplibregl.LngLatBounds();
+    [...tc, ...te].forEach(p => caja.extend(p));
+    mapa.fitBounds(caja, { padding: { top: 90, bottom: 70, left: innerWidth > 900 ? 460 : 30, right: 80 }, maxZoom: 15.5, duration: 1300 });
+    setTimeout(() => recorrer(te), 1350);
+  }
+  function pintarBateria() {
+    if (!ultimo) return;
+    // la ficha del carro es la misma en las dos ciudades: si el paquete de una no la trae, se usa la de Bogotá
+    const f0 = G.D.carro.ficha;
+    const c = f0.bateria_kwh ? f0 : ((M.carros || []).find(x => x.id === G.D.carro.id) || f0), sale = +$("#bateria").value;
+    if (!c.bateria_kwh) { $("#pilaSale").textContent = "sin dato de batería para este carro"; return; }
+    const gasto = ultimo.eE / c.bateria_kwh * 100, llega = sale - gasto;
+    $("#pilaQueda").style.width = `calc(${Math.max(0, Math.min(100, llega))}% - 4px)`;
+    $("#pilaGasto").style.left = `calc(${Math.max(0, Math.min(100, llega))}% + 2px)`;
+    $("#pilaGasto").style.width = `calc(${Math.max(0, Math.min(100, sale) - Math.max(0, llega))}% - 4px)`;
+    $("#pilaSale").textContent = `sale con ${nf(sale)} %`;
+    $("#pilaLlega").innerHTML = llega >= 0 ? `llega con <b style="color:var(--tinta)">${nf(llega, 1)} %</b>`
+      : `<b style="color:var(--brasa)">no alcanza: le faltan ${nf(-llega / 100 * c.bateria_kwh, 2)} kWh</b>`;
+  }
+  // el carro recorre la ruta eficiente
+  function recorrer(pts) {
+    if (!pts?.length) return;
+    const id = ++anim;
+    if (!mkCarro) { const el = document.createElement("div"); el.className = "marcador-carro";
+      mkCarro = new maplibregl.Marker({ element: el }).setLngLat(pts[0]).addTo(mapa); }
+    const ac = [0];
+    for (let i = 1; i < pts.length; i++) ac.push(ac[i - 1] + Math.hypot(
+      (pts[i][0] - pts[i - 1][0]) * Math.cos(pts[i][1] * Math.PI / 180), pts[i][1] - pts[i - 1][1]));
+    const L = ac[ac.length - 1], dur = QUIETO ? 1 : Math.min(9000, Math.max(3500, (ultimo?.dE || 3000) * .45));
+    const t0 = performance.now();
+    (function f(t) {
+      if (id !== anim) return;
+      const k = Math.min(1, (t - t0) / dur), s = L * (k < .5 ? 2 * k * k : 1 - Math.pow(-2 * k + 2, 2) / 2);
+      let i = 1; while (i < ac.length - 1 && ac[i] < s) i++;
+      const r = (s - ac[i - 1]) / Math.max(1e-12, ac[i] - ac[i - 1]);
+      mkCarro.setLngLat([pts[i - 1][0] + (pts[i][0] - pts[i - 1][0]) * r, pts[i - 1][1] + (pts[i][1] - pts[i - 1][1]) * r]);
+      if (k < 1) requestAnimationFrame(f);
+    })(t0);
+  }
+  $("#repetir").onclick = () => ultimo && recorrer(ultimo.te);
+  function dibujarPerfil(r) {
+    const { g, W, H } = lienzo($("#perfilFinal"));
+    const p = G.perfil(r.aristas, r.nodos), L = p[p.length - 1][0] || 1;
+    let z0 = Infinity, z1 = -Infinity;
+    for (const [, z] of p) { if (z < z0) z0 = z; if (z > z1) z1 = z; }
+    if (z1 - z0 < 12) { const m = (z0 + z1) / 2; z0 = m - 6; z1 = m + 6; }
+    const X = s => s / L * (W - 2) + 1, Y = z => H - 10 - (z - z0) / (z1 - z0) * (H - 22);
+    let sube = 0;
+    for (let i = 1; i < p.length; i++) {
+      const up = p[i][1] >= p[i - 1][1]; if (up) sube += p[i][1] - p[i - 1][1];
+      const col = up ? CSS("--brasa") : CSS("--cian");
+      g.beginPath(); g.moveTo(X(p[i - 1][0]), Y(p[i - 1][1])); g.lineTo(X(p[i][0]), Y(p[i][1]));
+      g.lineTo(X(p[i][0]), H - 8); g.lineTo(X(p[i - 1][0]), H - 8); g.closePath();
+      g.fillStyle = col + "33"; g.fill();
+      g.beginPath(); g.moveTo(X(p[i - 1][0]), Y(p[i - 1][1])); g.lineTo(X(p[i][0]), Y(p[i][1]));
+      g.strokeStyle = col; g.lineWidth = 1.6; g.stroke();
+    }
+    g.fillStyle = CSS("--tinta3"); g.font = "400 10px 'Inter Tight', sans-serif";
+    g.fillText(`${nf(z0, 0)}–${nf(z1, 0)} m`, 2, 10);
+    $("#perfilPieFinal").textContent = `${nf(L / 1000, 2)} km · sube ${nf(sube, 0)} m`;
+  }
+  estadoPuntos();
+  entradas.final = () => alListo(() => { montar(); setTimeout(() => mapa?.resize(), 60); });
+}
+
+// Las escenas de la historia rutean sobre Bogotá aunque en el mapa se haya usado Medellín.
+for (const id of Object.keys(entradas)) {
+  if (id === "final") continue;
+  const f = entradas[id];
+  entradas[id] = (...a) => { usarBogota(); return f(...a); };
+}
+
+// Con todo el contenido ya puesto, se mide otra vez que cada escena quepa.
+encajar();
+alListo(() => setTimeout(encajar, 50));
+</script>
+</body>
+</html>

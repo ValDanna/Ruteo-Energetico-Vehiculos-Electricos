@@ -1,0 +1,62 @@
+Grafo y ruteo de Bogotá: instrucciones de ejecución
+
+Carpeta de trabajo
+   Todos los cuadernos leen sus rutas de constantes_d1.py, que toma como raíz la carpeta donde está guardado.
+   Por eso se arma UNA sola carpeta de trabajo con todo lo de bogota/Codigo y medellin/Codigo juntos
+   (constantes_d1.py, d1_*.py, d2_medellin.py y los cuadernos). Esa carpeta debe estar al lado de
+   "Bloque A" y "Bloque B" (inventario de estaciones de carga), porque D4 busca ahí las estaciones:
+
+      Tesis/
+      ├── Bloque A/
+      ├── Bloque B/
+      └── Grafo/            <- carpeta de trabajo
+          ├── constantes_d1.py, d1_*.py, cuadernos
+          ├── datos_crudos/  (se crea sola)
+          └── entregables/   (se crea sola)
+
+   Si se prefiere otra ubicación, se puede fijar la raíz con la variable de entorno RUTA_PROYECTO_TESIS.
+
+1. Instalar el entorno:  pip install -r requirements.txt
+
+2. D2 — red dirigida (D2_grafo_bogota.ipynb)
+   Correr de arriba abajo. Si datos_crudos ya tiene la Malla Vial congelada (139 páginas y su manifiesto),
+   el cuaderno la lee de ahí y no se conecta a internet. Si no está, la descarga del servicio de Catastro;
+   esa descarga tendrá otra fecha y otro hash del conjunto, y los resultados ya no serán los del documento.
+   Hash del conjunto congelado (corte 2026-09-19):
+      3d8963916697159423856913110c144661d42abdbc12c67398058dee6a8df75e
+   Salidas en entregables/D2: D2_segmentos_para_pendiente.gpkg y .csv, nodos_bogota.csv,
+   D2_contrato_intercambio.json y D2_huellas_salidas.json. Las 10 pruebas de exportación deben pasar.
+   Huella de los segmentos (identificador + geometría):
+      dcf865850e8c15196ce7f85306fde17cb16a786f91763b26d8abcd919e4d95c1
+   El GeoPackage, el contrato y las huellas son lo que recibe el módulo de terreno en su datos_entrada.
+
+3. D3 — unión con la pendiente (D3_union_pendiente.ipynb)
+   Copiar en datos_crudos/recibidos el archivo del módulo de terreno, sin cambiarle nada:
+      bogota_pendientes_segmentos_mdt2020_v1_1.csv
+      SHA256 445009d19b07c61d7e0e789c5ab0adf3a56a794dec8640baf54e61c4ea560c4b
+   La rama que se une es RAMA_OFICIAL de constantes_d1.py (sigma0536_v1_1). Si el archivo no es el
+   registrado o falla alguna de las 11 pruebas del contrato, el cuaderno se detiene y no une nada.
+   Salidas en entregables/D3/rama_sigma0536_v1_1.
+
+4. D4 — ruteo, consumo y accesibilidad (D4_grafo_ruteo.ipynb)
+   Antes de correr:
+   - Poner junto a constantes_d1.py la carpeta modelo_consumo (del módulo de consumo), sin modificarla.
+     El cuaderno comprueba la huella de cada archivo contra ARCHIVOS_MODELO_CONSUMO.
+   - Copiar en datos_crudos/recibidos, tal como llegan del módulo de terreno:
+        revision_52_extremas_bogota.csv   7a451b1bdbf0217a97e887eb683cb022e1b603c0a6ce7019f30ed04a4b9973a4
+        ascenso_linea_recta_bogota.csv    37c82cf6aa068bfae0df6afc9b2b41c1a0dcf928ccc7981db9fa385f8f98ba35
+        regla_puentes_castigo.csv         aaf96937d808ac947fdc2610bb77716101f1c88cbe6534ff69cd4f35e09e3ca6
+   Correr de arriba abajo. La corrida completa tarda varias horas; la celda 12 (corridas de energía) es la
+   más larga. Las celdas 15e y 15f van al final porque solo leen resultados ya escritos.
+   Salidas en entregables/D4. La celda 23 escribe D4_version_oficial.json con la bitácora citada y sus huellas.
+   Corrida oficial: bitacora_ejecucion_D4_20261119_130812_cierre_192643.json
+
+5. Comprobar la reproducción
+   Ningún cuaderno sobrescribe un resultado. Si se vuelve a correr sobre la misma carpeta, cada archivo debe
+   salir como "ya existe, idéntico". Si un archivo sale distinto, el cuaderno se detiene y dice cuál.
+   Los GeoPackage se comparan por la huella de sus segmentos, no por su SHA256, porque guardan la hora
+   en que se escribieron.
+
+Las decisiones de la corrida oficial (escenario de red, castigo k, muestra de viajes, carro base, batería)
+están en constantes_d1.py, cada una con su comentario. Para probar otra opción se cambia la constante y se
+corre en una carpeta entregables nueva (o se mueve la anterior).

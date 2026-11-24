@@ -1,0 +1,39 @@
+Inventario de estaciones de carga (bloques A y B): instrucciones de ejecución
+
+Carpeta de trabajo
+   Las carpetas "Bloque A" y "Bloque B" van juntas dentro de una misma carpeta (por ejemplo Tesis/).
+   Cada cuaderno busca constantes.py subiendo desde su carpeta hasta encontrar "Bloque A". La carpeta de
+   trabajo del módulo del grafo va al lado de estas dos (ver su LEEME.txt).
+
+1. Instalar el entorno:  pip install -r requirements.txt
+
+2. Insumos que no están en el repositorio
+   - Bloque A/Municipios_Junio_2026.gpkg: límite municipal del IGAC (capa nacional de municipios).
+   - Crudos congelados, cada uno con su .sha256 y su .meta.json en la carpeta de su entregable:
+        Entregable A2/A2_osm_crudo_Bogota_2026-08-29.json
+           883195e669b34f105e3a75ec31eddccd9124bcd73b6871384636ff172a9b1724
+        Entregable A2/A2_osm_crudo_Medellin_2026-08-29.json
+           109443ae81cdfbc7b69f6889a19026ea0f13ea6c1829e75a8830a95fc4989d1c
+        Entregable A3/A3_ocm_crudo_Colombia_estado-al-2026-08-29_bajado-2026-09-02.json
+           c281a19abe3fdc10a8910d18ce420517e4bdd23b50f14b3973c5587230a209db
+     Si están, A2 y A3 los leen y no se conectan a internet. Si no están, A2 vuelve a consultar Overpass
+     con la fecha de corte; A3 necesita la variable de entorno OCM_API_KEY y descarga el estado ACTUAL de
+     OCM, que ya no es el del 29 de agosto: OCM no permite consultar fechas pasadas.
+   - Entregable B2/crudo/manz.shp.07.26.zip: manzanas de Catastro, versión 07.26, de
+     datosabiertos.bogota.gov.co (CC BY 4.0).
+        SHA256 04be5ad368d471cdfc40093306c709c962ea0fd90d4e0a61a150aa0c24f5b6d3
+
+3. Orden de ejecución (cada cuaderno de arriba abajo)
+   A2 -> A3 -> B1 -> B2 -> B2.1 -> B3 -> B3.1 -> B4
+   A4 se puede correr después de A3, pero nadie usa sus salidas: queda como registro del contraste en un
+   solo sentido.
+   Cada cuaderno escribe en su propia carpeta y nunca modifica las salidas de un bloque anterior.
+
+4. Comprobar
+   - Cada cuaderno abre con una celda de procedencia que compara la huella de sus insumos con el manifiesto
+     del paso anterior. Si algo cambió, se detiene.
+   - Todas las pruebas de aceptación deben pasar (A2: 13 por ciudad, A3: 18, B1: 8, B2: 13, B2.1: 17,
+     B3: 10, B3.1: 10, B4: 16).
+   - El inventario final debe dar 71 estaciones físicas (Bogotá 52, Medellín 19) y
+     B2_1_clasificacion_verificada.csv debe tener el SHA256
+        b0a2e926cf09b73c3273bc0b10e35ed5ee9d2b9f7f2798607d4780fde6253337

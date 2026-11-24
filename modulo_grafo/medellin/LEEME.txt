@@ -1,0 +1,48 @@
+Grafo y ruteo de Medellín: instrucciones de ejecución
+
+Carpeta de trabajo
+   La misma de Bogotá: los cuadernos de Medellín usan constantes_d1.py y d1_procedencia.py de bogota/Codigo.
+   Se arma una sola carpeta con todo lo de bogota/Codigo y medellin/Codigo, al lado de "Bloque A" y
+   "Bloque B" (ver el LEEME.txt de Bogotá). Bloque A debe tener constantes.py y el límite IGAC
+   (Municipios_Junio_2026.gpkg), porque D2M recorta la red con él (código DANE 05001).
+
+1. Instalar el entorno:  pip install -r requirements.txt
+
+2. D2M — red dirigida (D2_grafo_medellin.ipynb)
+   Correr de arriba abajo. Si datos_crudos/medellin ya tiene la capa «Sentido vial» congelada y su
+   manifiesto, el cuaderno la lee de ahí y no se conecta a internet.
+   Hash del conjunto congelado (corte 2026-09-21):
+      c9d53ebbdffe80e2de23167f82954e8015900c7d06fc5c308826ca043797358c
+   Necesita la lista de tramos que OpenStreetMap marca como escaleras, senderos o peatonales
+   (873 tramos), en la ruta de RUTA_EXCLUSION_OSM_MED de constantes_d1.py:
+      D2M_exclusion_no_vehicular_osm.csv
+      SHA256 3cb1c8c8662c5b69486d70f0e462c3b2deee9630277843c71ecbca7a219d64ff
+   Salidas en entregables/D2_medellin: D2M_segmentos_para_pendiente.gpkg, nodos_medellin.csv,
+   D2M_contrato_intercambio.json y D2M_huellas_salidas.json. Las 15 pruebas deben pasar.
+   Huella de los segmentos:
+      5baf0bc9b8d2ac59a29b21eafe4d36cd8c2803ce5e966d095fd2ca6db587a590
+
+3. D3M — unión con la pendiente (D3_union_pendiente_medellin.ipynb)
+   Copiar en datos_crudos/recibidos el archivo del módulo de terreno, sin cambiarle nada:
+      medellin_pendientes_segmentos_dtm2021_v3.csv
+      SHA256 2aaba7230df0845116775e5100d3bc9292f67c4041a33aed1082d28d69f68e5e
+   La rama que se une es RAMA_OFICIAL_MED (med_sigma054, sigma_z 0,539 m). Son las 11 pruebas de Bogotá
+   más 2 de túneles; si falla alguna, no se une nada.
+   Salidas en entregables/D3_medellin/rama_med_sigma054.
+
+4. D4M — ruteo, consumo y accesibilidad (D4_ruteo_medellin.ipynb)
+   Antes de correr:
+   - Poner junto a constantes_d1.py la carpeta modelo_consumo_v2 (del módulo de consumo, con su
+     subcarpeta medellin), sin modificarla. Se comprueban sus huellas contra ARCHIVOS_MODELO_CONSUMO_MED.
+   - Copiar en datos_crudos/recibidos, tal como llegan del módulo de terreno:
+        revision_104_medellin_completada.csv  f10b110c78652820f08e4d0f9e7914795ac8580c45bdbad275a4ddf4dd42d59e
+        ascenso_linea_recta_medellin.csv      3ce2a9822cd66a276762ac224216c97b78976dcfc364d0085c17a20f660c225b
+   Correr de arriba abajo; tarda unos 35 minutos. No modifica nada de Bogotá.
+   Salidas en entregables/D4_medellin. La celda 23 comprueba la corrida citada contra constantes_d1.py
+   y escribe D4M_version_oficial.json.
+   Corrida oficial: bitacora_ejecucion_D4M_20261120_092658_cierre_102743.json
+      SHA256 59bfabe40322c83abc058461137bd6d9fc85e5c42e4fcebaf7d5f65e7621796f
+
+5. Comprobar la reproducción
+   Igual que en Bogotá: al volver a correr, cada archivo debe salir como "ya existe, idéntico"; si sale
+   distinto, el cuaderno se detiene.

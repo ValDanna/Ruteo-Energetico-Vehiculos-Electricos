@@ -18,7 +18,6 @@ El identificador de cada segmento es `<código de la vía>_<parte>_<FT|TF>`. Cad
 modulo_grafo/
 ├── README.md
 ├── bogota/
-│   └── Codigo/
 │       ├── constantes_d1.py           parámetros de las dos ciudades (rutas, fuentes, decisiones)
 │       ├── d1_procedencia.py          huellas de archivos y de segmentos
 │       ├── d1_malla.py                descarga y congela la Malla Vial
@@ -29,7 +28,6 @@ modulo_grafo/
 │       ├── LEEME.txt                  instrucciones de ejecución paso a paso
 │       └── requirements.txt
 └── medellin/
-    └── Codigo/
         ├── d2_medellin.py
         ├── D2_grafo_medellin.ipynb
         ├── D3_union_pendiente_medellin.ipynb
